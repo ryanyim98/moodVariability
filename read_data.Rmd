@@ -1,0 +1,310 @@
+---
+title: "read_data"
+author: "Ryan Yan"
+date: "2024-01-16"
+output: html_document
+---
+
+## baseline questionnaires
+```{r load data}
+indir <- './data/raw/'
+outdir <- './data/'
+#load initial questionnaires
+df_init <- read_csv(paste0(indir,'baseline_questionnaires.csv'))
+
+df_init <- df_init%>% 
+  rename(Prolific.Id = Last.Name)%>%
+  filter(Prolific.Id != '')%>% #filter those without prolific id
+  dplyr::select(Response.Id:Trigger.Index,During.the.past.week....I.was.bothered.by.things.that.usually.don.t.bother.me.:During.the.past.week....I.could.not.get.going,#25-44
+Understand.the.reasons.when.I.feel.very.excited.or.happy.:Can.slow.myself.down.when.I.want.to.,#46-69
+When.I.hear.about.a.new.movie.starring.my.favorite.actor.I.can.t.wait.to.see.it.:When.something.exciting.is.coming.up.in.my.life.I.really.look.forward.to.it.,#71-88
+Right.now...I.feel.calm:Right.now....I.feel.pleasant,#90-109
+In.general....I.feel.pleasant:In.general...I.get.in.a.state.of.tension.or.turmoil.as.I.think.over.recent.concerns.and.interests) #111-130
+
+#load PANAS
+df_PANAS <- read.csv(paste0(indir,"ema_panas_sf.csv"))
+
+df_PANAS <- df_PANAS%>%
+  rename(Prolific.Id = Last.Name)%>%
+  filter(Prolific.Id != '')%>% #filter those without prolific id
+  dplyr::select(Response.Id:Trigger.Index, 
+         Interested, Distressed, Excited, Upset, Strong,
+         Guilty, Scared, Hostile, Enthusiastic, Proud, 
+         Irritable, Alert, Ashamed, Inspired, Nervous,
+         Determined, Attentive, Jittery, Active, Afraid)
+```
+
+```{r sort obs. and delete duplicates}
+#-----------PANAS-----------
+df_PANAS <- df_PANAS[order(df_PANAS$Prolific.Id,df_PANAS$Trigger.Index),] #order the data frame by user id and trigger index
+
+#return user ids and the number of rows they have (ie. No of PANAS completed)
+user_PANAS <- df_PANAS%>%
+  group_by(Prolific.Id)%>%
+  count()%>%
+  filter(n >= 90)#change the number into the wanted threshold!
+  
+df_PANAS <- df_PANAS %>%
+  filter(Prolific.Id %in% user_PANAS$Prolific.Id) 
+
+#only keep the first of all duplicate cases
+df_PANAS <- df_PANAS%>%
+  group_by(Prolific.Id,Trigger.Index)%>%
+  slice_head()%>%
+  ungroup()
+
+#calculate PA and NA for PANAS
+df_PANAS <- df_PANAS %>%
+  mutate(PA_sum = Interested + Excited + Strong + Enthusiastic + Proud + Alert + Inspired + Determined + Attentive + Active) %>%
+  mutate(NA_sum = Distressed + Upset + Guilty + Scared + Hostile + Irritable + Ashamed + Nervous + Jittery + Afraid) %>% 
+  mutate(PAminusNA_sum = PA_sum - NA_sum)
+
+# #check if there is still any duplicate, should be none!
+df_PANAS%>%
+  group_by(Prolific.Id,Trigger.Index)%>%
+  count()%>%
+  filter(n != 1)
+
+df_PANAS <- df_PANAS%>%
+  mutate(day_index = (Trigger.Index-1) %/%6 +1)%>%
+  mutate(time_index = (Trigger.Index-1) %%6 + 1)%>%
+  mutate(day_time_index = paste0(day_index,'_',time_index)) %>% 
+  relocate(c(day_index,time_index),.after = Trigger.Index)
+
+#-----------init Q-----------
+df_init <- df_init%>%
+  filter(Prolific.Id %in% user_PANAS$Prolific.Id)%>%
+  filter(Survey.Name != 'MIS Consent Form')%>%
+  mutate(Trigger.Date = as.Date(Trigger.Date,"%d/%m/%Y"))
+
+#reorder
+df_init <- df_init[order(df_init$Prolific.Id,df_init$Trigger.Index,df_init$Trigger.Date),]
+
+#delete duplicates
+df_init <- df_init%>%
+  group_by(Prolific.Id)%>%
+  slice_head(n = 4)%>% #only take the first four rows earliest in time; comment this line to see the original data with duplicates
+  ungroup()
+```
+
+```{r calc and aggregate baseline questionnaires}
+#-----------CESD: 20 items-----------
+#item already reversely coded
+df_CESD <- df_init%>%
+  filter(Survey.Name == 'CESD')%>%
+  dplyr::select(Prolific.Id,
+         During.the.past.week....I.was.bothered.by.things.that.usually.don.t.bother.me.:During.the.past.week....I.could.not.get.going)#20-39
+
+names(df_CESD)[2:21] <- paste0('CESD',1:20)
+df_CESD$CESD_sum <- rowSums(df_CESD[,2:21])
+
+#-----------HPS: 24 items---------------
+df_HPS <- df_init%>%
+  filter(Survey.Name == 'HPS')%>%
+  dplyr::select(Prolific.Id,
+         Understand.the.reasons.when.I.feel.very.excited.or.happy.:Can.slow.myself.down.when.I.want.to.)
+#
+
+names(df_HPS)[2:25] <- paste0('HPS',1:24)
+df_HPS$HPS_sum <- rowSums(df_HPS[,2:25])
+
+#-----------TEPS: 18 items---------------
+df_TEPS <- df_init%>%
+  filter(Survey.Name == 'TEPS')%>%
+  dplyr::select(Prolific.Id,
+         When.I.hear.about.a.new.movie.starring.my.favorite.actor.I.can.t.wait.to.see.it.:When.something.exciting.is.coming.up.in.my.life.I.really.look.forward.to.it.)
+
+names(df_TEPS)[2:19] <- paste0('TEPS',1:18)
+df_TEPS$TEPS_sum <- rowSums(df_TEPS[,2:19])
+df_TEPS$TEPS_ant_sum <- rowSums(df_TEPS[,1+c(1,4,6,8,10,11,13,15,16,18)])
+df_TEPS$TEPS_con_sum <- rowSums(df_TEPS[,1+c(2,3,5,7,9,12,14,17)])
+
+#-----------STAI: 20*2 items---------------
+df_STAI <- df_init%>%
+  filter(Survey.Name == 'STAI')%>%
+  dplyr::select(Prolific.Id,
+         Right.now...I.feel.calm:In.general...I.get.in.a.state.of.tension.or.turmoil.as.I.think.over.recent.concerns.and.interests)
+
+names(df_STAI)[2:21] <- paste0('STAI_SA',1:20)
+names(df_STAI)[22:41] <- paste0('STAI_TA',1:20)
+df_STAI$STAI_SA_sum <- rowSums(df_STAI[,2:21])
+df_STAI$STAI_TA_sum <- rowSums(df_STAI[,22:41])
+
+#aggregate init Qs
+df_init_sum <- Reduce(merge, list(df_CESD, df_HPS, df_TEPS, df_STAI))
+  # filter(Prolific.Id %in%PANAS_and_gorilla_user$Prolific.Id)
+
+#sanity check
+names(df_init_sum)
+length(df_init_sum$Prolific.Id)
+```
+
+## gorilla task
+```{r}
+#load data files
+df_d1b1 <- read.csv(paste0(indir,"apple_d1b1.csv")) #struct learn day 1 block 1
+df_d1b1$day_block <- 'day1_block1'
+df_d1b2 <- read.csv(paste0(indir,"apple_d1b2.csv")) #struct learn day 1 block 2
+df_d1b2$day_block <- 'day1_block2'
+df_d2b1 <- read.csv(paste0(indir,"apple_d2b1.csv")) #struct learn day 2 block 1
+df_d2b1$day_block <- 'day2_block1'
+df_d2b2 <- read.csv(paste0(indir,"apple_d2b2.csv")) #struct learn day 2 block 2
+df_d2b2$day_block <- 'day2_block2'
+
+nrow(df_d1b1) #99997, should be the same for below; if not, check the reason
+nrow(df_d1b2) #99801
+nrow(df_d2b1) #99993
+nrow(df_d2b2) #100112
+
+df_all <- rbind(df_d1b1,df_d1b2,df_d2b1,df_d2b2)
+#leave WoF out first; join files after X1-X7 are calculated!
+
+##sanity check
+#all subjects
+nsub = length(unique(df_all$Participant.Public.ID))-1 #354, but is actually 353!! because the last participant was ""
+sub_list <- unique(df_all$Participant.Public.ID)[1:nsub]
+
+df_all <- df_all %>%
+  filter(Participant.Public.ID%in%sub_list)%>% #get rid of the ""
+  filter(component != '')%>% #get rid of the first row for each participant which is empty
+  dplyr::select(Participant.Public.ID, Reaction.Time:totalmon,outcome_mag, outcome, component, moodrate,day_block)%>%
+  group_by(Participant.Public.ID,day_block,component)%>%
+  mutate(row_id_par = row_number())%>%
+  ungroup()%>%
+  group_by(Participant.Public.ID)%>%
+  mutate(moodrate_scaled = as.numeric(scale(moodrate)))%>%
+  ungroup()
+```
+
+## wheel of fortune
+```{r impoart WoF and make data frame WoF~moodrate}
+#--------------wof--------------
+df_wof1 <- read.csv(paste0(indir,"wof_d1.csv"))%>% #WoF day 1
+  filter(component != 'wof')%>%
+  dplyr::select(Participant.Public.ID, randomiser.tc6s, wofoutcome)%>%
+  mutate(wof_order = randomiser.tc6s,wofoutcome1 = wofoutcome)%>%
+  dplyr::select(-randomiser.tc6s,-wofoutcome)
+
+df_wof2 <- read.csv(paste0(indir,"wof_d2.csv"))%>% #WoF day 2
+  filter(component != 'wof')%>%
+  dplyr::select(Participant.Public.ID, wofoutcome)%>%
+  mutate(wofoutcome2 = wofoutcome)%>%
+  dplyr::select(-wofoutcome)
+
+df_wof <- left_join(df_wof1,df_wof2)%>%
+  filter(Participant.Public.ID!='')
+
+#600091ba38fa9b158243c79f was repeated??
+df_wof <- df_wof[-which(duplicated(df_wof$Participant.Public.ID)),]
+
+#--------mood rate original-------
+df_mood <- df_all%>%
+  filter(component == 'moodrate')%>%
+  dplyr::select(Participant.Public.ID, moodrate, day_block)%>%
+  group_by(Participant.Public.ID,day_block)%>%
+  mutate(Index = row_number())%>%
+  ungroup() %>% 
+  filter(Index <= 41)#should be between 1 and 41
+
+#add variable: day and block
+#find another way! loops are too time-consuming
+df_mood$day[df_mood$day_block == "day1_block1" | df_mood$day_block == "day1_block2"] <- 1
+df_mood$block[df_mood$day_block == "day1_block1" | df_mood$day_block == "day2_block1"] <- 1
+
+df_mood$day[df_mood$day_block == "day2_block1" | df_mood$day_block == "day2_block1"] <- 2
+df_mood$block[df_mood$day_block == "day1_block2" | df_mood$day_block == "day2_block2"] <- 2
+
+write.csv(df_mood,paste(outdir,paste('moodrate_by_trial.csv')))
+
+#--------mood rate scaled--------
+df_mood_scaled <- df_all%>%
+  filter(component == 'moodrate')%>%
+  dplyr::select(Participant.Public.ID, moodrate_scaled, day_block)%>%
+  group_by(Participant.Public.ID,day_block)%>%
+  mutate(Index = row_number())%>%
+  ungroup() %>% 
+  filter(Index <= 41)
+
+df_mood_scaled$day[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day1_block2"] <- 1
+df_mood_scaled$block[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day2_block1"] <- 1
+
+df_mood_scaled$day[df_mood_scaled$day_block == "day2_block1" | df_mood_scaled$day_block == "day2_block1"] <- 2
+df_mood_scaled$block[df_mood_scaled$day_block == "day1_block2" | df_mood_scaled$day_block == "day2_block2"] <- 2
+
+df_mood_scaled <- left_join(df_mood_scaled,df_wof)
+```
+## reorder mood ratings and combine raw and scaled values
+```{r}
+before_win <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 1 & day == 1 & block == 1) |
+           (wofoutcome2 == 1 & day == 2 & block == 1)) %>% 
+  mutate(block_type = "before_win")
+
+after_win <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 1 & day == 1 & block == 2) |
+           (wofoutcome2 == 1 & day == 2 & block == 2)) %>% 
+  mutate(block_type = "after_win")
+
+before_loss <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 0 & day == 1 & block == 1) |
+           (wofoutcome2 == 0 & day == 2 & block == 1)) %>% 
+  mutate(block_type = "before_loss")
+
+after_loss <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 0 & day == 1 & block == 2) |
+           (wofoutcome2 == 0 & day == 2 & block == 2)) %>% 
+  mutate(block_type = "after_loss")
+
+df_mood_ratings <- rbind(before_win,after_win,before_loss,after_loss) %>% 
+  group_by(Participant.Public.ID) %>% 
+  mutate(all_trial_Idx = row_number())
+```
+
+## Bayesian model estimates
+```{r read .csv}
+df_gor_Est <- read.csv(paste0(outdir,'./apple_moodrate_params.csv')) %>% 
+  filter(run %in% c("d1r1","d2r1")) %>%  #only take the first run each day
+  ungroup() %>% 
+  group_by(id) %>% 
+  summarise_at(vars(mean_mu:mean10_vs), ~mean(.x))
+
+df_panas_Est <- read.csv(paste0(outdir,'./ema_panas_params.csv')) %>% 
+  pivot_wider(names_from = panas_type, values_from = mean_mu:mean10_vs)
+```
+
+```{r}
+df_PANAS_mean <- df_PANAS %>% 
+  ungroup() %>% 
+  group_by(Prolific.Id) %>% 
+  summarise(PA_mean = mean(PA_sum, na.rm = T),
+            NA_mean = mean(NA_sum, na.rm = T),
+            PA_se = sd(PA_sum, na.rm = T)/sqrt(n()),
+            NA_se = sd(NA_sum, na.rm = T)/sqrt(n()))
+
+df_master <- left_join(df_init_sum,df_PANAS_mean) %>% 
+  left_join(df_gor_Est %>%
+              rename(Prolific.Id = id)) %>% 
+  left_join(df_mood %>% 
+              filter(day == 1, block == 1) %>% 
+              group_by(Participant.Public.ID) %>% 
+              summarise(moodrate_mean = mean(moodrate, na.rm = T)) %>% 
+              rename(Prolific.Id = Participant.Public.ID)) %>% 
+  left_join(df_panas_Est%>%
+              rename(Prolific.Id = id))
+```
+#output 
+```{r}
+ls.participant <- intersect(df_master$Prolific.Id,df_all$Participant.Public.ID)
+length(ls.participant)
+
+df_master <- df_master %>% 
+  filter(Prolific.Id %in% ls.participant)
+
+write.csv(df_master,paste(outdir,paste('df_baseline_panas_gorilla_params.csv')))
+
+df_mood_ratings <- df_mood_ratings %>% 
+  rename(Prolific.Id = Participant.Public.ID) %>% 
+  filter(Prolific.Id %in% ls.participant)
+
+write.csv(df_mood_ratings,paste(outdir,paste('moodrate_scaled.csv')))
+```
