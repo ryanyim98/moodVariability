@@ -40,9 +40,11 @@ if Param=='M'
 %       plot([3,5],[-0.02,-0.02], 'k--','LineWidth', 1.6)
 xticks([1,3,5])
 xticklabels({'trials - 1:3','trials - 4:6','trials - 7:9',})
-xtickangle(45)
+%xtickangle(45)
 ylim([-0.08,0.06])
-ylabel({'The dependency of {\it mu} on the affective impact of outcomes'},'FontSize', 14);
+title({'Dependency of EMA {\it mu} on {\beta}'},'FontSize', 14);
+ylabel('Correlation Strength');
+xlabel('{\beta} type');
 box off
 H=gca;
 H.LineWidth=1;
@@ -71,8 +73,10 @@ elseif Param=='V'
 xticks([1,3,5])
 %ylim([0,0.17])
 xticklabels({'trials - 1:3','trials - 4:6','trials - 7:9',})
-xtickangle(45)
-ylabel({'The dependency of {\it vmu} on the affective impact of outcomes'},'FontSize', 14);
+%xtickangle(45)
+title({'Dependency of EMA {\it vmu} on {\beta}'},'FontSize', 14);
+ylabel('Correlation Strength');
+xlabel('{\beta} type');
 box off
 H=gca;
 H.LineWidth=1;
@@ -110,9 +114,11 @@ elseif Param=='S'
 %        plot([1,5],[-0.13,-0.13], 'k--','LineWidth', 1.6)
       xticks([1,3,5])
 xticklabels({'trials - 1:3','trials - 4:6','trials - 7:9',})
-xtickangle(45)
+% xtickangle(45)
 ylim([-0.3,0.25])
-ylabel({'The dependency of {\it SD} on the affective impact of outcomes'},'FontSize', 14);
+title({'Dependency of EMA {\it SD} on {\beta}'},'FontSize', 14);
+ylabel('Correlation Strength');
+xlabel('{\beta} type');
 box off
 H=gca;
 H.LineWidth=1;

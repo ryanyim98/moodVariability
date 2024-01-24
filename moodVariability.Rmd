@@ -2,14 +2,19 @@
 title: "moodVariability"
 author: "Ryan Yan"
 date: "2024-01-16"
-output: html_document
+output:
+  pdf_document: default
+  html_notebook:
+    code_folding: hide
+  html_document:
+    df_print: paged
 ---
-#library 
-```{r}
+# library 
+```{r warning=FALSE,message=FALSE}
 source(here::here("load_library.R"))
 ```
 
-```{r}
+```{r warning=FALSE,message=FALSE}
 theme_set(theme_classic()+
           theme(text = element_text(family = "Helvetica", size = 10)))
 vmuColor <- "red"
@@ -17,8 +22,8 @@ noiseColor <- 'royalblue3'
 muColor <- 'forestgreen'
 ```
 
-#load and combine data
-```{r}
+# load and combine data
+```{r warning=FALSE,message=FALSE}
 rmarkdown::render("read_data.Rmd")
 ```
 
@@ -26,13 +31,18 @@ rmarkdown::render("read_data.Rmd")
 
 ## 1.1 simulation demonstrating the plausibility of inferring long-term affective variability from task variability
 
+$$Affect = setpoint + \sum_{t=1}^{T}event_t(a*e^{b(t-T)})$$
+
 ![Simulation results.](./figures/figure_SimCorr.png)
+Figure 1 shows that affective parameters acquired from a small portion (3%) of affective time-series, generally appear to correlate with equivalent parameters acquired from the full time-series.
 
 ![Simulation results.](./figures/figure_SimExpVsbayes.png)
+As illustrated in the 3 panels above, the filter’s estimated *mu* appears to generally increase as the affective set point increases, the filter’s estimated *SD* appears to generally increase as the initial deflection increases and the filter’s estimated *vmu* appears to generally increase as the decay rate decreases.
 
 ## 1.2 dependency of gorilla task parameters on emotional reactivity
-![Gor params on task](./figures/figure_GorBayes_vs_Betas.png)
-![EMA params on task](./figures/figure_PANASBayes_vs_Betas.png)
+![Bayes params on task](./figures/figure_Bayes_vs_Betas.png)
+(a-c) Task *SD* is associated with the immediate impact of task events, which is consistent with the idea that it reflects the magnitude of initial affective deflection from baseline. Task *vmu* is associated with the persistent impact of task events, which is consistent with the idea that it reflects the rate at which affect returns to baseline. Unexpectedly, task *mu* is negatively associated with the immediate impact of task events, it is unclear what this signifies.
+(d-f)  As with task *SD*, ESM *SD* is associated with the immediate impact of task events, which is consistent with the idea that 𝑆𝐷 in everyday life reflects the magnitude of initial affective deflections from baseline. ESM *vmu* does not bear any significant relationship to the duration of responses to task events. ESM *mu* shows the same pattern of associations as ESM *SD*.
 
 ## 1.3 dependency of EMA params on task params
 
@@ -64,29 +74,41 @@ summary(lm(mean5_vmu ~ mean5_vmu_posminusneg + mean_mu + mean_s, df_master))
 summary(lm(mean_mu ~ mean_mu_posminusneg + mean5_vmu + mean_s, df_master))
 
 summary(lm(mean_s ~ mean_s_posminusneg + mean_mu + mean5_vmu, df_master))
+
+chart.Correlation(df_master %>% 
+                    dplyr::select(mean5_vmu_posminusneg,mean_s_posminusneg,mean_mu_posminusneg, 
+                                 mean5_vmu,mean_mu,mean_s) %>% 
+                    rename(task_vmu = mean5_vmu,
+                           task_sd = mean_s,
+                           task_mu = mean_mu,
+                           ema_vmu = mean5_vmu_posminusneg,
+                           ema_sd = mean_s_posminusneg,
+                           ema_mu = mean_mu_posminusneg))
 ```
 
+Task affect variables are specifically associated with their ESM counterparts when controlling for other task variables. The only exception is ESM *mu* which was additionally associated with task *SD*.
 
 # part 2: Relationship between EMA and baseline questionnaires
-## EMA summary statistics and baseline questionnaires (gist: everything is intercorrelated; poor differentiation between mean and se)
-### We used PA minus NA because it's most comparative with the analog scale
+## 2.1 EMA summary statistics and baseline questionnaires (gist: poor differentiation between mean and se)
+P.S. We used PA minus NA because it's most comparative with the analog scale
 ```{r}
 chart.Correlation(df_master %>% 
                     dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,
                            PA_mean,PA_se,NA_mean,NA_se))
 ```
 
-## EMA bayes params and baseline questionnaires
+## 2.2 EMA bayes params and baseline questionnaires
 *Ask Mike here: how to justify using posminusneg vs. pos and neg separately?*
 
-### When using the difference score (PA minus NA), we see that the noise of this 'net mood rating' is correlated with HPS
+### When using the difference score (PA minus NA), we see that the noise of this 'net mood rating' is correlated with HPS; mu is correlated with TEPS and negative affectivity in the expected direction.
+
 ```{r}
 chart.Correlation(df_master %>% 
                     dplyr::select(TEPS_sum,HPS_sum,CESD_sum, STAI_TA_sum,STAI_TA_sum,
                            mean5_vmu_posminusneg,mean_mu_posminusneg,mean_s_posminusneg))
 ```
 
-* Check with Mike about how to interpret this!*
+### TEPS is positively associated with task SD. However, considering from section 1.3 that task SD is associated with EMA mu, we want to control for EMA mu. After controlling, the correlation is still significant at p < .05.
 
 ```{r fig.width= 15, fig.height=4}
 ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu))+
@@ -111,20 +133,20 @@ ggplot(df_master, aes(x = HPS_sum, y = mean_s))+
   plot_layout(nrow = 1)
   labs(y = "task mood noise")
   
-summary(lm(TEPS_sum ~ mean_s + mean5_vmu + mean_s_pos +mean5_vmu_pos,df_master))
-ppcor::pcor(df_master %>% dplyr::select(mean_s,mean5_vmu_pos,TEPS_sum))
-
-summary(lm(HPS_sum ~ mean_s + mean5_vmu + mean_s_pos + mean5_vmu_pos,df_master))
+summary(lm(TEPS_sum ~ mean_s + mean_mu_posminusneg,df_master))
+ppcor::pcor(df_master %>% dplyr::select(mean_s,mean_mu_posminusneg,TEPS_sum))
 ```
 
 ### However, we would expect some differentiation between PA and NA parameters; TEPS should be correlated with PA variability., and depression/anxiety should be correlated with NA variability. Motivated by this differentiability, we will now examine these specific links.
-
-```{r fig.width= 12,fig.height= 8}
+```{r echo=FALSE}
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_pos,TEPS_sum))
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_pos,TEPS_sum))
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_neg,TEPS_sum))
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_neg,TEPS_sum))
+```
 
+### Here, we see that TEPS and HPS are differentially associated with the variability of EMA PA.
+```{r fig.width= 12,fig.height= 8}
 ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
@@ -178,7 +200,7 @@ ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
 
 ```
 
-## do a factor analysis of all baseline questionnaires to capture positive and negative affectivity
+## 2.3 factor analysis of all baseline questionnaires to capture positive and negative affectivity
 ```{r}
 df_fa <- df_master %>% dplyr::select(HPS_sum,TEPS_ant_sum,TEPS_con_sum,CESD_sum, STAI_TA_sum,STAI_SA_sum)
 
@@ -198,6 +220,7 @@ df_master_ <- cbind(df_master, psych::fa(df_fa, nfactors = 2,
          trait_PA= MR2)
 ```
 
+### Similar to what we found in 2.2, trait PA (hedonia) is associated with higher PA volatility but not NA; trait NA is associated with higher NA but not variability.
 ```{r fig.width= 12,fig.height= 8}
 ggplot(df_master_, aes(x = trait_NA, y = mean5_vmu_pos))+
   geom_point(size = 0.5)+
@@ -249,7 +272,10 @@ ggplot(df_master_, aes(x = trait_PA, y = mean_s_neg))+
 ```{r warning=FALSE,message=FALSE}
 source(here::here("fit_diurnal_model.R"))
 ```
-## plot example diurnal fit
+
+## 3.1 plot example diurnal fit
+### PA: Across subjects, the quadratic term is negative and linear term is positive.
+
 ```{r}
 lm_diurn_pa <- lmer(PA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index/Prolific.Id),data=df_PANAS_forlm)
 
@@ -269,6 +295,7 @@ ggplot(data=df_PANAS_forlm1)+
          y = 'predicted scaled PA', x = 'time of day')+
    scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"))
 ```
+### NA: Across subjects, there is no significant diurnal effect.
 
 ```{r}
 lm_diurn_na <- lmer(NA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index/Prolific.Id),data=df_PANAS_forlm)
@@ -289,8 +316,6 @@ ggplot(data=df_PANAS_forlm2)+
          y = 'predicted scaled NA', x = 'time of day')+
    scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"))
 ```
-
-## demonstrate that diurnal variation contributes to noise
 ```{r}
 df_lm_sum <- read_csv(paste(outdir, 'panas_lm_params.csv'))
 
@@ -330,44 +355,57 @@ t.test(df_master$`t_Estimate_PA`, mu = 0)
 t.test(df_master$`t_Estimate_NA`, mu = 0)
 ```
 
-```{r}
+## 3.2 demonstrate that diurnal variation of PA contributes to noise, but not volatility
+
+```{r fig.width= 12,fig.height= 8}
 ggplot(df_master, aes(x = mean5_vmu_pos, y = `t^2_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "PA model",
-       x = "PA volatility",
+  labs(title = "Quadratic term (negative)",
+       x = "log PA volatility",
        y = "quadratic term")+
 ggplot(df_master, aes(x = mean_s_pos, y = `t^2_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA noise",
+  labs(x = "log PA noise",
        y = "quadratic term")+
 ggplot(df_master, aes(x = mean_mu_pos, y = `t^2_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = "grey", fill = "grey") +
+  geom_hline(yintercept = 0, linetype = "dashed")+
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA mean",
+  labs(x = "log PA mu",
        y = "quadratic term")+
 
 ggplot(df_master, aes(x = mean5_vmu_pos, y = `t_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA volatility",
+  labs(title = "Linear term (positive)",
+       x = "log PA volatility",
        y = "linear term")+
 ggplot(df_master, aes(x = mean_s_pos, y = `t_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA noise",
+  labs(x = "log PA noise",
        y = "linear term")+
 ggplot(df_master, aes(x = mean_mu_pos, y = `t_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = "grey", fill = "grey") +
+  geom_hline(yintercept = 0, linetype = "dashed")+
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA mean",
+  labs(x = "log PA mu",
        y = "linear term")
+```
+```{r}
+summary(lm(`t^2_Estimate_PA`~ mean5_vmu_pos + mean_s_pos,df_master))
+summary(lm(`t_Estimate_PA`~ mean5_vmu_pos + mean_s_pos,df_master))
 ```
 
