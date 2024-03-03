@@ -1,0 +1,136 @@
+---
+title: "moodVariability"
+author: "Ryan Yan"
+date: "2024-01-16"
+output:
+  html_document:
+    df_print: paged
+  html_notebook:
+    code_folding: hide
+  pdf_document: default
+---
+
+
+ Paper 1: Specific components of task based mood variability are associated with specific components of real world mood variability. The diurnal stuff could go in this paper.
+
+The logic of this paper would be: mood variability is clinically interesting but difficult and time consuming to measure. You can split it up into different components but would be nice to assess whether we can study these components experimentally in the lab. We looked at whether we could do that by getting people to complete a task, and then following them up after. We found this specificity in terms of type of mood variability.
+
+In addition we wondered about diurnal effects in the real world data, which were associated with noise, not volatility (the missing thing here would be an analysis of the link between the task and the diurnal stuff—might not work as diurnal effect is valence specific though).
+
+# library 
+```{r warning=FALSE,message=FALSE}
+source(here::here("load_library.R"))
+```
+
+```{r warning=FALSE,message=FALSE}
+theme_set(theme_classic()+
+          theme(text = element_text(family = "Helvetica", size = 10)))
+vmuColor <- "red"
+noiseColor <- 'royalblue3'
+muColor <- 'forestgreen'
+```
+
+# load and combine data
+```{r warning=FALSE,message=FALSE}
+rmarkdown::render("read_data.Rmd")
+```
+
+# part 1: Linking task and EMA mood variability
+
+## 1.1 simulation demonstrating the plausibility of inferring long-term affective variability from task variability
+
+$$Affect = setpoint + \sum_{t=1}^{T}event_t(a*e^{b(t-T)})$$
+
+![Simulation results.](./figures/figure_SimCorr.png)
+Figure 1 shows that affective parameters acquired from a small portion (3%) of affective time-series, generally appear to correlate with equivalent parameters acquired from the full time-series.
+
+![Simulation results.](./figures/figure_SimExpVsbayes.png)
+As illustrated in the 3 panels above, the filter’s estimated *mu* appears to generally increase as the affective set point increases, the filter’s estimated *SD* appears to generally increase as the initial deflection increases and the filter’s estimated *vmu* appears to generally increase as the decay rate decreases.
+
+## 1.2 dependency of gorilla task parameters on emotional reactivity
+![Bayes params on task](./figures/figure_Bayes_vs_Betas.png)
+(a-c) Task *SD* is associated with the immediate impact of task events, which is consistent with the idea that it reflects the magnitude of initial affective deflection from baseline. Task *vmu* is associated with the persistent impact of task events, which is consistent with the idea that it reflects the rate at which affect returns to baseline. Unexpectedly, task *mu* is negatively associated with the immediate impact of task events, it is unclear what this signifies.
+(d-f)  As with task *SD*, ESM *SD* is associated with the immediate impact of task events, which is consistent with the idea that 𝑆𝐷 in everyday life reflects the magnitude of initial affective deflections from baseline. ESM *vmu* does not bear any significant relationship to the duration of responses to task events. ESM *mu* shows the same pattern of associations as ESM *SD*.
+
+## 1.3 dependency of EMA params on task params
+
+```{r fig.width= 12, fig.height=4}
+ggplot(df_master, aes(x = mean5_vmu, y = mean5_vmu_posminusneg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title ="dependency of task parames on EMA params",
+       x = "task volatility",
+       y = "EMA volatility")+
+ggplot(df_master, aes(x = mean_mu, y = mean_mu_posminusneg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = muColor, fill = muColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "task mean",
+       y = "EMA mean")+
+ggplot(df_master, aes(x = mean_s, y = mean_s_posminusneg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "task noise",
+       y = "EMA noise")
+```
+
+```{r}
+summary(lm(mean5_vmu ~ mean5_vmu_posminusneg + mean_mu + mean_s, df_master))
+
+summary(lm(mean_mu ~ mean_mu_posminusneg + mean5_vmu + mean_s, df_master))
+
+summary(lm(mean_s ~ mean_s_posminusneg + mean_mu + mean5_vmu, df_master))
+
+chart.Correlation(df_master %>% 
+                    dplyr::select(mean5_vmu_posminusneg,mean_s_posminusneg,mean_mu_posminusneg, 
+                                 mean5_vmu,mean_mu,mean_s) %>% 
+                    rename(task_vmu = mean5_vmu,
+                           task_sd = mean_s,
+                           task_mu = mean_mu,
+                           ema_vmu = mean5_vmu_posminusneg,
+                           ema_sd = mean_s_posminusneg,
+                           ema_mu = mean_mu_posminusneg))
+```
+
+Task affect variables are specifically associated with their ESM counterparts when controlling for other task variables. The only exception is ESM *mu* which was additionally associated with task *SD*.
+
+# part 2: Relationship between task params and (all?) baseline questionnaires
+```{r, echo=FALSE}
+chart.Correlation(df_master %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum, mean5_vmu,mean_s,mean_mu))
+```
+
+## 2.2 Task params and baseline questionnaires (paper 1 or 2?)
+
+### TEPS is positively associated with task SD. However, considering from section 1.3 that task SD is associated with EMA mu, we want to control for EMA mu. After controlling, the correlation is still significant at p < .05.
+
+```{r fig.width= 15, fig.height=4}
+ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "task mood volatility")+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_s))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "task mood noise")+
+ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "task mood volatility")+
+ggplot(df_master, aes(x = HPS_sum, y = mean_s))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p"))) +
+  plot_layout(nrow = 1)
+  labs(y = "task mood noise")
+  
+summary(lm(TEPS_sum ~ mean_s + mean_mu_posminusneg,df_master))
+ppcor::pcor(df_master %>% dplyr::select(mean_s,mean_mu_posminusneg,TEPS_sum))
+```
+
+

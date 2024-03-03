@@ -1,0 +1,332 @@
+---
+title: "moodVariability"
+author: "Ryan Yan"
+date: "2024-01-16"
+output:
+  html_document:
+    df_print: paged
+  html_notebook:
+    code_folding: hide
+  pdf_document: default
+---
+Paper 2: There is specificity concerning the association between self report
+scales and different sorts of real world variability.
+
+The logic of this paper is that: mood variability has been associated with
+mental health problems, although there are different sorts of mood
+variability and it is not obvious whether there is any specificity to
+these associations, we find specificity in terms of different scales and them map them onto general positive/negative affective dimensions.
+
+# library 
+```{r warning=FALSE,message=FALSE}
+source(here::here("load_library.R"))
+```
+
+```{r warning=FALSE,message=FALSE}
+theme_set(theme_classic()+
+          theme(text = element_text(family = "Helvetica", size = 10)))
+vmuColor <- "red"
+noiseColor <- 'royalblue3'
+muColor <- 'forestgreen'
+```
+
+# load and combine data
+```{r warning=FALSE,message=FALSE}
+rmarkdown::render("read_data.Rmd")
+```
+
+# Part 2: Relationship between EMA and baseline questionnaires
+## 2.1 EMA summary statistics and baseline questionnaires (gist: poor differentiation between mean and se)
+
+P.S. We used PA and NA separately due to differentiation in the literature and RDoc
+```{r}
+chart.Correlation(df_master %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,
+                           PA_mean,PA_se,NA_mean,NA_se))
+```
+
+## 2.2 EMA bayes params and baseline questionnaires
+*Ask Mike here: how to justify using posminusneg vs. pos and neg separately?*
+
+### When using the difference score (PA minus NA), we see that the noise of this 'net mood rating' is correlated with HPS; mu is correlated with TEPS and negative affectivity in the expected direction.
+
+```{r}
+chart.Correlation(df_master %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum, STAI_TA_sum,STAI_TA_sum,
+                           mean5_vmu_pos,mean_mu_pos,mean_s_pos,
+                           mean5_vmu_neg,mean_mu_neg,mean_s_neg))
+```
+
+### We would expect some differentiation between PA and NA parameters; TEPS should be correlated with PA variability., and depression/anxiety should be correlated with NA variability. Motivated by this differentiability, we will now examine these specific links.
+
+```{r echo=FALSE}
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_pos,TEPS_sum))
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_pos,TEPS_sum))
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_neg,TEPS_sum))
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_neg,TEPS_sum))
+```
+
+### Here, we see that TEPS and HPS are differentially associated with the variability of EMA PA.
+```{r fig.width= 12,fig.height= 8}
+ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "TEPS",
+       y = "PA vmu",
+       subtitle = "partial r = 0.156, p = .004")+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_s_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "PA noise",
+       subtitle = "partial r = -0.028, p = .608")+
+ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA vmu",
+       subtitle = "partial r = -0.091, p = .093")+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_s_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA noise",
+       subtitle = "partial r = -0.109, p = .045") + 
+ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "HPS",y = "PA vmu",
+       subtitle = "partial r = 0.064, p = .240")+
+ggplot(df_master, aes(x = HPS_sum, y = mean_s_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "PA noise",
+       subtitle = "partial r = 0.092, p = .091")+
+ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA vmu",
+       subtitle = "partial r = 0.118, p = .029")+
+ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA noise",
+       subtitle = "partial r = 0.298, p < .001")+
+  plot_layout(nrow = 2)
+
+```
+
+## 2.3 factor analysis of all baseline questionnaires to capture positive and negative affectivity
+```{r}
+df_fa <- df_master %>% dplyr::select(HPS_sum,TEPS_ant_sum,TEPS_con_sum,CESD_sum, STAI_TA_sum,STAI_SA_sum)
+
+ev <- eigen(cor(na.omit(df_fa))) # get eigenvalues
+ap <- parallel(subject=nrow(df_fa),var=ncol(df_fa),rep=100,cent=.05)
+nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)
+plotnScree(nS)# scree plot
+
+psych::fa(df_fa, nfactors = 2,
+          rotate = "varimax",
+          scores = "regression")
+
+df_master_ <- cbind(df_master, psych::fa(df_fa, nfactors = 2,
+          rotate = "varimax",
+          scores = "regression")$scores) %>% 
+  rename(trait_NA = MR1,
+         trait_PA= MR2)
+```
+
+### Similar to what we found in 2.2, trait PA (hedonia) is associated with higher PA volatility but not NA; trait NA is associated with higher NA but not variability.
+```{r fig.width= 12,fig.height= 8}
+ggplot(df_master_, aes(x = trait_NA, y = mean5_vmu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "EMA variability and Trait NA",
+       y = "PA vmu")+
+ggplot(df_master_, aes(x = trait_NA, y = mean_s_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "PA noise")+
+ggplot(df_master_, aes(x = trait_NA, y = mean5_vmu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA vmu")+
+ggplot(df_master_, aes(x = trait_NA, y = mean_s_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA noise")+
+
+ggplot(df_master_, aes(x = trait_PA, y = mean5_vmu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "EMA variability and Trait PA",y = "PA vmu")+
+ggplot(df_master_, aes(x = trait_PA, y = mean_s_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "PA noise")+
+ggplot(df_master_, aes(x = trait_PA, y = mean5_vmu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA vmu")+
+ggplot(df_master_, aes(x = trait_PA, y = mean_s_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "NA noise")+
+
+  plot_layout(nrow = 2)
+```
+
+# Part 3 (SI): diurnal contributions to the EMA variability
+```{r warning=FALSE,message=FALSE}
+source(here::here("fit_diurnal_model.R"))
+```
+
+## 3.1 plot example diurnal fit
+### PA: Across subjects, the quadratic term is negative and linear term is positive.
+
+```{r}
+lm_diurn_pa <- lmer(PA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index/Prolific.Id),data=df_PANAS_forlm)
+
+summary(lm_diurn_pa)
+
+df_PANAS_forlm1 <- df_PANAS_forlm %>%
+  filter(!is.na(PA_sum_scaled)) 
+df_PANAS_forlm1$PA_pred_val = fitted(lm_diurn_pa)
+
+ggplot(data=df_PANAS_forlm1)+
+    theme_classic()+
+    stat_summary(aes(x=time_index, y=PA_pred_val,group = Prolific.Id), 
+                 geom = "line", alpha = 0.1)+
+  stat_summary(aes(x=time_index, y=PA_pred_val,group = 1), 
+                 geom = "pointrange", color = "red", size = 0.5)+
+    labs(title = 'Diurnal Variation Model prediction - PA',
+         y = 'predicted scaled PA', x = 'time of day')+
+   scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"))
+```
+### NA: Across subjects, there is no significant diurnal effect.
+
+```{r}
+lm_diurn_na <- lmer(NA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index/Prolific.Id),data=df_PANAS_forlm)
+
+summary(lm_diurn_na)
+
+df_PANAS_forlm2 <- df_PANAS_forlm %>%
+  filter(!is.na(NA_sum_scaled)) 
+df_PANAS_forlm2$NA_pred_val = fitted(lm_diurn_na)
+
+ggplot(data=df_PANAS_forlm2)+
+    theme_classic()+
+    stat_summary(aes(x=time_index, y=NA_pred_val,group = Prolific.Id), 
+                 geom = "line", alpha = 0.1)+
+  stat_summary(aes(x=time_index, y=NA_pred_val,group = 1), 
+                 geom = "pointrange", color = "red", size = 0.5)+
+    labs(title = 'Diurnal Variation Model prediction - NA',
+         y = 'predicted scaled NA', x = 'time of day')+
+   scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"))
+```
+```{r}
+df_lm_sum <- read_csv(paste(outdir, 'panas_lm_params.csv'))
+
+df_master <- left_join(df_master, df_lm_sum %>% 
+  dplyr::select(Prolific.Id,model,Intercept_Estimate:t_Estimate,R2c) %>% 
+  pivot_wider(names_from = model, values_from = c(Intercept_Estimate:R2c)))
+
+
+ggplot(df_master %>% 
+         dplyr::select(`t^2_Estimate_PA`,`t^2_Estimate_NA`) %>% 
+         rename(PosAff = `t^2_Estimate_PA`,
+                NegAff = `t^2_Estimate_NA`) %>% 
+         pivot_longer(PosAff:NegAff,
+                      names_to = "Affect", values_to = "quad_term"), aes(x = Affect, y = quad_term))+
+  geom_violin(aes(color = Affect))+
+  geom_jitter(width = 0.3, size = 0.4)+
+  stat_summary(aes(color = Affect),geom = "pointrange")+
+  scale_color_brewer(palette = "Set1")+
+  geom_hline(yintercept = 0, linetype = "dotted")
+
+t.test(df_master$`t^2_Estimate_PA`, mu = 0)
+t.test(df_master$`t^2_Estimate_NA`, mu = 0)
+
+ggplot(df_master %>% 
+         dplyr::select(`t_Estimate_PA`,`t_Estimate_NA`) %>% 
+         rename(PosAff = `t_Estimate_PA`,
+                NegAff = `t_Estimate_NA`) %>% 
+         pivot_longer(PosAff:NegAff,
+                      names_to = "Affect", values_to = "lin_term"), aes(x = Affect, y = lin_term))+
+  geom_violin(aes(color = Affect))+
+  geom_jitter(width = 0.3,size=0.4)+
+  stat_summary(aes(color = Affect),geom = "pointrange")+
+  scale_color_brewer(palette = "Set1")+
+  geom_hline(yintercept = 0, linetype = "dotted")
+
+t.test(df_master$`t_Estimate_PA`, mu = 0)
+t.test(df_master$`t_Estimate_NA`, mu = 0)
+```
+
+## 3.2 demonstrate that diurnal variation of PA contributes to noise, but not volatility
+
+```{r fig.width= 12,fig.height= 8}
+ggplot(df_master, aes(x = mean5_vmu_pos, y = `t^2_Estimate_PA`))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "Quadratic term (negative)",
+       x = "log PA volatility",
+       y = "quadratic term")+
+ggplot(df_master, aes(x = mean_s_pos, y = `t^2_Estimate_PA`))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "log PA noise",
+       y = "quadratic term")+
+ggplot(df_master, aes(x = mean_mu_pos, y = `t^2_Estimate_PA`))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = "grey", fill = "grey") +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "log PA mu",
+       y = "quadratic term")+
+
+ggplot(df_master, aes(x = mean5_vmu_pos, y = `t_Estimate_PA`))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "Linear term (positive)",
+       x = "log PA volatility",
+       y = "linear term")+
+ggplot(df_master, aes(x = mean_s_pos, y = `t_Estimate_PA`))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "log PA noise",
+       y = "linear term")+
+ggplot(df_master, aes(x = mean_mu_pos, y = `t_Estimate_PA`))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = "grey", fill = "grey") +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "log PA mu",
+       y = "linear term")
+```
+```{r}
+summary(lm(`t^2_Estimate_PA`~ mean5_vmu_pos + mean_s_pos,df_master))
+summary(lm(`t_Estimate_PA`~ mean5_vmu_pos + mean_s_pos,df_master))
+```
+
