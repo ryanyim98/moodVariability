@@ -57,7 +57,8 @@ df_PANAS <- df_PANAS%>%
 df_PANAS <- df_PANAS %>%
   mutate(PA_sum = Interested + Excited + Strong + Enthusiastic + Proud + Alert + Inspired + Determined + Attentive + Active) %>%
   mutate(NA_sum = Distressed + Upset + Guilty + Scared + Hostile + Irritable + Ashamed + Nervous + Jittery + Afraid) %>% 
-  mutate(PAminusNA_sum = PA_sum - NA_sum)
+  mutate(PAminusNA_sum = PA_sum - NA_sum,
+         PANA_sum = PA_sum + NA_sum)
 
 # #check if there is still any duplicate, should be none!
 df_PANAS%>%
@@ -107,6 +108,7 @@ df_HPS <- df_init%>%
 
 names(df_HPS)[2:25] <- paste0('HPS',1:24)
 df_HPS$HPS_sum <- rowSums(df_HPS[,2:25])
+ltm::cronbach.alpha(df_HPS[2:25])
 
 #-----------TEPS: 18 items---------------
 df_TEPS <- df_init%>%
@@ -118,6 +120,7 @@ names(df_TEPS)[2:19] <- paste0('TEPS',1:18)
 df_TEPS$TEPS_sum <- rowSums(df_TEPS[,2:19])
 df_TEPS$TEPS_ant_sum <- rowSums(df_TEPS[,1+c(1,4,6,8,10,11,13,15,16,18)])
 df_TEPS$TEPS_con_sum <- rowSums(df_TEPS[,1+c(2,3,5,7,9,12,14,17)])
+ltm::cronbach.alpha(df_TEPS[2:19])
 
 #-----------STAI: 20*2 items---------------
 df_STAI <- df_init%>%
@@ -157,7 +160,6 @@ nrow(df_d2b1) #99993
 nrow(df_d2b2) #100112
 
 df_all <- rbind(df_d1b1,df_d1b2,df_d2b1,df_d2b2)
-#leave WoF out first; join files after X1-X7 are calculated!
 
 ##sanity check
 #all subjects
@@ -174,7 +176,22 @@ df_all <- df_all %>%
   group_by(Participant.Public.ID)%>%
   mutate(moodrate_scaled = as.numeric(scale(moodrate)))%>%
   ungroup()
+
+count(df_all, Participant.Public.ID)%>% 
+  filter(n > 1124)
+
+#get rid of duplicates
+df_all <- df_all %>% 
+   group_by(Participant.Public.ID,day_block)%>%
+   mutate(Trial.Index = ifelse(component == "moodrate",lead(Trial.Index)-1,Trial.Index)) %>% 
+   group_by(Participant.Public.ID,day_block,component,Trial.Index)%>%
+  mutate(rowid = row_number()) %>% 
+   filter(rowid == 1) %>% 
+  dplyr::select(-rowid)
+
+count(df_all %>% ungroup(), Participant.Public.ID)
 ```
+
 
 ## wheel of fortune
 ```{r impoart WoF and make data frame WoF~moodrate}
@@ -219,7 +236,7 @@ write.csv(df_mood,paste(outdir,paste('moodrate_by_trial.csv')))
 #--------mood rate scaled--------
 df_mood_scaled <- df_all%>%
   filter(component == 'moodrate')%>%
-  dplyr::select(Participant.Public.ID, moodrate_scaled, day_block)%>%
+  dplyr::select(Participant.Public.ID, moodrate_scaled, moodrate,day_block)%>%
   group_by(Participant.Public.ID,day_block)%>%
   mutate(Index = row_number())%>%
   ungroup() %>% 
@@ -228,11 +245,35 @@ df_mood_scaled <- df_all%>%
 df_mood_scaled$day[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day1_block2"] <- 1
 df_mood_scaled$block[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day2_block1"] <- 1
 
-df_mood_scaled$day[df_mood_scaled$day_block == "day2_block1" | df_mood_scaled$day_block == "day2_block1"] <- 2
+df_mood_scaled$day[df_mood_scaled$day_block == "day2_block1" | df_mood_scaled$day_block == "day2_block2"] <- 2
 df_mood_scaled$block[df_mood_scaled$day_block == "day1_block2" | df_mood_scaled$day_block == "day2_block2"] <- 2
 
-df_mood_scaled <- left_join(df_mood_scaled,df_wof)
+df_mood_scaled <- left_join(df_mood_scaled,df_wof, by = "Participant.Public.ID") %>% 
+  mutate(day_block2 = ifelse(wofoutcome1 == 1 & day == 1, paste0("winday_block",block),
+                             ifelse(wofoutcome1 == 1 & day == 2, paste0("loseday_block",block),
+                                    ifelse(wofoutcome1 == 0 & day == 1, paste0("loseday_block",block),
+                                           ifelse(wofoutcome1 == 0 & day == 2, paste0("winday_block",block),NA)))))
 ```
+
+```{r}
+df_wof_react <- rbind(df_mood_scaled %>% 
+  filter(block == 1, (Index >= 1 & Index <= 3) | Index == 41),
+  df_mood_scaled %>% 
+    filter(block == 2,(Index >= 1 & Index <= 3) | Index == 41)) %>% 
+    dplyr::select(-day,-block,-moodrate,-Trial.Index,-day_block,-wofoutcome1,-wofoutcome2,-component) %>% 
+    ungroup() %>% 
+    pivot_wider(names_from = c(day_block2,Index), values_from = moodrate_scaled)
+
+df_wof_react <- df_wof_react %>% 
+  mutate(winday_X1 = (winday_block2_1 - winday_block1_41), # - (winday_block1_1 - winday_block2_41)
+         winday_X2 = winday_block2_2 - winday_block1_41 , #- (winday_block1_2 - winday_block2_41)
+         winday_X3 = winday_block2_3 - winday_block1_41 , #- (winday_block1_3 - winday_block2_41)
+         loseday_X1 = loseday_block2_1 - loseday_block1_41 , #- (loseday_block1_1 - loseday_block2_41)
+         loseday_X2 = loseday_block2_2 - loseday_block1_41 ,#- (loseday_block1_2 - loseday_block2_41)
+         loseday_X3 = loseday_block2_3 - loseday_block1_41) #- (loseday_block1_3 - loseday_block2_41)
+```
+
+
 ## reorder mood ratings and combine raw and scaled values
 ```{r}
 before_win <- df_mood_scaled %>% 
@@ -257,19 +298,87 @@ after_loss <- df_mood_scaled %>%
 
 df_mood_ratings <- rbind(before_win,after_win,before_loss,after_loss) %>% 
   group_by(Participant.Public.ID) %>% 
-  mutate(all_trial_Idx = row_number())
+  mutate(Mood.Index = Index - 1)#the order of events are mood rating / choice / outcome, so mood rating's index needs to be subtracted by 1
+```
+
+
+#affective events regression
+```{r}
+df_betas <- df_all %>% 
+  filter(component == "choice") %>% 
+  dplyr::select(Participant.Public.ID, Trial.Index,totalmon:outcome,day_block) %>% 
+  rename(Index = Trial.Index) %>% 
+  mutate(Mood.Index = floor((Index-1)/3)+1) %>% 
+  group_by(Participant.Public.ID, day_block,Mood.Index) %>% 
+  mutate(Choice.Index = row_number()) %>% 
+  ungroup() %>% 
+  dplyr::select(Participant.Public.ID, day_block,Mood.Index,Choice.Index,outcome,outcome_mag) %>% 
+  group_by(Participant.Public.ID, day_block)%>% 
+  mutate(outcome1b = lag(outcome,0),
+         outcome2b = lag(outcome,1),
+         outcome3b = lag(outcome,2),
+         outcome4b = lag(outcome,3),
+         outcome5b = lag(outcome,4),
+         outcome6b = lag(outcome,5),
+         outcome7b = lag(outcome,6),
+         outcome8b = lag(outcome,7),
+         outcome9b = lag(outcome,8),
+         outcome1bo = ifelse(outcome1b == 1, outcome1b, -1), #orthogonalized
+         outcome2bo = ifelse(outcome2b == 1, outcome2b, -1),
+         outcome3bo = ifelse(outcome3b == 1, outcome3b, -1),
+         outcome4bo = ifelse(outcome4b == 1, outcome4b, -1),
+         outcome5bo = ifelse(outcome5b == 1, outcome5b, -1),
+         outcome6bo = ifelse(outcome6b == 1, outcome6b, -1),
+         outcome7bo = ifelse(outcome7b == 1, outcome7b, -1),
+         outcome8bo = ifelse(outcome8b == 1, outcome8b, -1),
+         outcome9bo = ifelse(outcome9b == 1, outcome9b, -1),
+         outcome_mag1b = ifelse(lag(outcome_mag,0) == 0, 0, lag(outcome_mag,0)-10),
+         outcome_mag2b = ifelse(lag(outcome_mag,1) == 0, 0, lag(outcome_mag,1)-10),
+         outcome_mag3b = ifelse(lag(outcome_mag,2) == 0, 0, lag(outcome_mag,2)-10),
+         outcome_mag4b = ifelse(lag(outcome_mag,3) == 0, 0, lag(outcome_mag,3)-10),
+         outcome_mag5b = ifelse(lag(outcome_mag,4) == 0, 0, lag(outcome_mag,4)-10),
+         outcome_mag6b = ifelse(lag(outcome_mag,5) == 0, 0, lag(outcome_mag,5)-10),
+         outcome_mag7b = ifelse(lag(outcome_mag,6) == 0, 0, lag(outcome_mag,6)-10),
+         outcome_mag8b = ifelse(lag(outcome_mag,7) == 0, 0, lag(outcome_mag,7)-10),
+         outcome_mag9b = ifelse(lag(outcome_mag,8) == 0, 0, lag(outcome_mag,8)-10),) %>%
+  filter(Choice.Index == 3) %>% 
+  dplyr::select(-outcome,-outcome_mag,-Choice.Index)
+
+df_reg <- full_join(df_betas,df_mood_ratings,
+                    by = c("Participant.Public.ID","Mood.Index","day_block"))
+
+
 ```
 
 ## Bayesian model estimates
-```{r read .csv}
+```{r }
+df_gor_Est_all <- read.csv(paste0(outdir,'./apple_moodrate_params.csv')) %>% 
+  filter(run %in% c("d1r1","d2r1","d1r2","d2r2")) %>% 
+  pivot_wider(id_cols = id,names_from = run, values_from = mean_mu:mean10_vs)
+
 df_gor_Est <- read.csv(paste0(outdir,'./apple_moodrate_params.csv')) %>% 
   filter(run %in% c("d1r1","d2r1")) %>%  #only take the first run each day
   ungroup() %>% 
   group_by(id) %>% 
   summarise_at(vars(mean_mu:mean10_vs), ~mean(.x))
 
+ggplot(df_gor_Est, aes(x = mean5_s, y = mean_s))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+ggplot(df_gor_Est, aes(x = mean5_vmu, y = mean5_s))+
+  geom_point()+
+  geom_smooth(method = "lm")
+
 df_panas_Est <- read.csv(paste0(outdir,'./ema_panas_params.csv')) %>% 
   pivot_wider(names_from = panas_type, values_from = mean_mu:mean10_vs)
+
+ggplot(df_panas_Est, aes(x = mean5_s_posminusneg_hr, y = mean_s_posminusneg_hr))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+
+ggplot(df_panas_Est, aes(x = mean5_s_posminusneg_hr, y = mean5_vmu_posminusneg_hr))+
+  geom_point()+
+  geom_smooth(method = "lm")
 ```
 
 ```{r}
@@ -278,8 +387,13 @@ df_PANAS_mean <- df_PANAS %>%
   group_by(Prolific.Id) %>% 
   summarise(PA_mean = mean(PA_sum, na.rm = T),
             NA_mean = mean(NA_sum, na.rm = T),
+            PAminusNA_mean = mean(PAminusNA_sum, na.rm = T),
             PA_se = sd(PA_sum, na.rm = T)/sqrt(n()),
-            NA_se = sd(NA_sum, na.rm = T)/sqrt(n()))
+            NA_se = sd(NA_sum, na.rm = T)/sqrt(n()),
+            PAminusNA_se = sd(PAminusNA_sum, na.rm = T)/sqrt(n()),
+            PANA_mean = mean(PANA_sum, na.rm = T),
+            PANA_se = sd(PANA_sum, na.rm = T)/sqrt(n()),
+            PAminusNA_mssd = psych::rmssd(PAminusNA_sum))
 
 df_master <- left_join(df_init_sum,df_PANAS_mean) %>% 
   left_join(df_gor_Est %>%
@@ -287,11 +401,38 @@ df_master <- left_join(df_init_sum,df_PANAS_mean) %>%
   left_join(df_mood %>% 
               filter(day == 1, block == 1) %>% 
               group_by(Participant.Public.ID) %>% 
-              summarise(moodrate_mean = mean(moodrate, na.rm = T)) %>% 
+              summarise(moodrate_mean = mean(moodrate, na.rm = T),
+                        moodrate_se = sd(moodrate, na.rm = T)/sqrt(n()),
+                        moodrate_mssd = psych::rmssd(moodrate)) %>% 
               rename(Prolific.Id = Participant.Public.ID)) %>% 
   left_join(df_panas_Est%>%
+              rename(Prolific.Id = id)) %>% 
+  left_join(df_gor_Est_all%>%
               rename(Prolific.Id = id))
+
+df_master <- left_join(df_master,df_wof_react %>% 
+                         rename(Prolific.Id = Participant.Public.ID))%>% 
+  mutate(wof_X1 = (winday_X1 - loseday_X1)/2,
+         wof_X2 = (winday_X2 - loseday_X2)/2,
+         wof_X3 = (winday_X3 - loseday_X3)/2)
+  # mutate(wof_X1 = winday_X1,
+  #        wof_X2 = winday_X2,
+  #        wof_X3 = winday_X3)
 ```
+#read demographics
+```{r}
+demo_info <- read_csv("~/Desktop/MoodInstability/Paper\ Material\ for\ Ryan/AppleTask_scripts_1/Demographics.csv") %>% 
+  filter(status == "APPROVED") %>% 
+  filter(participant_id %in% df_master$Prolific.Id) %>% 
+  group_by(participant_id) %>% 
+  mutate(rowid = row_number()) %>% 
+  filter(rowid == 1) %>% 
+  dplyr::select(-rowid)
+
+df_master %>% 
+  filter(!Prolific.Id%in% demo_info$participant_id)
+```
+
 #output 
 ```{r}
 ls.participant <- intersect(df_master$Prolific.Id,df_all$Participant.Public.ID)
@@ -307,4 +448,59 @@ df_mood_ratings <- df_mood_ratings %>%
   filter(Prolific.Id %in% ls.participant)
 
 write.csv(df_mood_ratings,paste(outdir,paste('moodrate_scaled.csv')))
+
+# ggplot(df_mood_ratings %>% 
+#          filter(Prolific.Id == "5f2a94aba340af2e4dab2910", 
+#                 day_block %in% c("day1_block1","day2_block1")), aes(x = Trial.Index, y = moodrate))+
+#   geom_line(aes(color = day_block),size = 1)+
+#   theme_void()+
+#   scale_color_brewer(palette = "Paired")+
+#   theme(legend.position = "none")+
+#   labs(title = "Task")+
+# ggplot(df_panas_Est_tc %>% 
+#          filter(id == "5f2a94aba340af2e4dab2910",
+#                 panas_type %in% c("pos","neg")), aes(x = trial_id, y = origval))+
+#   geom_line(aes(color = panas_type),size = 1)+
+#   theme_void()+
+#     scale_color_brewer(palette = "Dark2")+
+#   labs(title = "Ecological")+
+#   plot_layout(nrow = 2)
 ```
+
+## Bayesian model estimate timecourses
+```{r}
+df_gor_Est_tc <- read.csv(paste0(outdir,'./apple_moodrate_params_timecourse.csv')) %>% 
+  filter(run %in% c("d1r1","d2r1")) %>% #only take the first run each day
+  group_by(id,run) %>% 
+  mutate(trial_id = row_number())
+
+df_gor_Est_tc <- left_join(df_gor_Est_tc,
+          df_mood_ratings %>% 
+  filter(block == 1) %>% 
+  dplyr::select(Prolific.Id,day,block,moodrate) %>% 
+  mutate(run = paste0("d",day,"r",block)) %>% 
+  rename(id = Prolific.Id) %>% 
+  dplyr::select(-day,-block) %>% #only take the first run each day
+  group_by(id,run) %>% 
+  mutate(trial_id = row_number()),
+  by = c("id","trial_id","run"))
+
+df_panas_Est_tc <- read.csv(paste0(outdir,'./ema_panas_params_timecourse.csv')) %>% 
+  group_by(id,panas_type) %>% 
+  mutate(trial_id = row_number())
+
+df_panas_Est_tc <- left_join(df_panas_Est_tc, 
+          df_PANAS %>% 
+  dplyr::select(Prolific.Id,PA_sum,NA_sum,PAminusNA_sum,) %>% 
+  rename(id = Prolific.Id,
+         pos = PA_sum,
+         neg = NA_sum,
+         posminusneg = PAminusNA_sum) %>%
+    mutate(posminusneg_hr = posminusneg) %>% 
+    relocate(posminusneg_hr, .after = posminusneg) %>% 
+  pivot_longer(pos:posminusneg_hr,names_to = "panas_type", values_to = "origval") %>% 
+  group_by(id,panas_type) %>% 
+  mutate(trial_id = row_number()),
+  by = c("id","panas_type","trial_id"))
+```
+

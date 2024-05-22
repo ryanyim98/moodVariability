@@ -19,6 +19,7 @@ In addition we wondered about diurnal effects in the real world data, which were
 
 # library 
 ```{r warning=FALSE,message=FALSE}
+rm(list = ls())
 source(here::here("load_library.R"))
 ```
 
@@ -33,6 +34,21 @@ muColor <- 'forestgreen'
 # load and combine data
 ```{r warning=FALSE,message=FALSE}
 rmarkdown::render("read_data.Rmd")
+source(here::here("run_reg.R"))
+```
+# demographics
+```{r}
+sum(is.na(demo_info$Sex))
+table(demo_info$Sex)
+
+sum(is.na(demo_info$age))
+table(demo_info$age)
+mean(demo_info$age, na.rm = T)
+sd(demo_info$age, na.rm = T)
+min(demo_info$age, na.rm = T)
+max(demo_info$age, na.rm = T)
+
+table(demo_info$`Country of Birth`)
 ```
 
 # part 1: Linking task and EMA mood variability
@@ -52,85 +68,1487 @@ As illustrated in the 3 panels above, the filter’s estimated *mu* appears to g
 (a-c) Task *SD* is associated with the immediate impact of task events, which is consistent with the idea that it reflects the magnitude of initial affective deflection from baseline. Task *vmu* is associated with the persistent impact of task events, which is consistent with the idea that it reflects the rate at which affect returns to baseline. Unexpectedly, task *mu* is negatively associated with the immediate impact of task events, it is unclear what this signifies.
 (d-f)  As with task *SD*, ESM *SD* is associated with the immediate impact of task events, which is consistent with the idea that 𝑆𝐷 in everyday life reflects the magnitude of initial affective deflections from baseline. ESM *vmu* does not bear any significant relationship to the duration of responses to task events. ESM *mu* shows the same pattern of associations as ESM *SD*.
 
-## 1.3 dependency of EMA params on task params
+```{r}
+l1 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all_long %>% 
+            mutate(regression_coef = factor(regression_coef,levels = c("X1","X2","X3"),labels = c("trial -1~3","trial -4~6","trial -7~9"))))
 
-```{r fig.width= 12, fig.height=4}
-ggplot(df_master, aes(x = mean5_vmu, y = mean5_vmu_posminusneg))+
+summary(l1)
+summary(lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all_long %>% 
+            mutate(regression_coef = factor(regression_coef,levels = c("X2","X3","X1")))))
+
+p0 <- plot_model(l1, "pred",
+           show.data = T, jitter = T, dot.size = 0.7,ci.style = "bar")+
+  labs(x = "Time of affective impact",
+       title = "")+
+  geom_hline(yintercept = 0, linetype = "dashed")
+
+s1 <- summary(lm(scale(mean_mu) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s3 <- summary(lm(scale(mean5_s) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "task mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "task volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "task noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p1 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("task mean","task volatility","task noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
+                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.8)
+```
+
+### 1.2.2 Dependency of PANAS parameter on emotional reactivity
+```{r}
+s1 <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s3 <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+#why is esm mean and esm noise both correlated with trial 1-3?
+ppcor::pcor(df_master %>% 
+              dplyr::select(mean5_s_posminusneg,mean_mu_posminusneg,X1) %>% 
+              drop_na())
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p2 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, 
+                y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.8)
+
+p0+(p1/p2)+
+  plot_annotation(tag_levels = "A")+
+  plot_layout(width = c(1,4))
+
+ggsave("./figures/figure_x1x3.png",width = 9, height = 7)
+```
+
+
+### each beta separately
+```{r}
+s1a <- summary(lm(scale(mean_mu) ~ scale(X1), df_master))
+s1b <- summary(lm(scale(mean_mu) ~ scale(X2), df_master))
+s1c <- summary(lm(scale(mean_mu) ~ scale(X3), df_master))
+
+s2a <- summary(lm(scale(mean5_vmu) ~ scale(X1), df_master))
+s2b <- summary(lm(scale(mean5_vmu) ~ scale(X2), df_master))
+s2c <- summary(lm(scale(mean5_vmu) ~ scale(X3), df_master))
+
+s3a <- summary(lm(scale(mean5_s) ~ scale(X1), df_master))
+s3b <- summary(lm(scale(mean5_s) ~ scale(X2), df_master))
+s3c <- summary(lm(scale(mean5_s) ~ scale(X3), df_master))
+
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1a$coefficients) %>% 
+              mutate(reg = "task mean"),
+            as.data.frame(s1b$coefficients) %>% 
+              mutate(reg = "task mean"),
+            as.data.frame(s1c$coefficients) %>% 
+              mutate(reg = "task mean"),
+            as.data.frame(s2a$coefficients) %>% 
+              mutate(reg = "task volatility"),
+            as.data.frame(s2b$coefficients) %>% 
+              mutate(reg = "task volatility"),
+            as.data.frame(s2c$coefficients) %>% 
+              mutate(reg = "task volatility"),
+            as.data.frame(s3a$coefficients) %>% 
+              mutate(reg = "task noise"),
+            as.data.frame(s3b$coefficients) %>% 
+              mutate(reg = "task noise"),
+            as.data.frame(s3c$coefficients) %>% 
+              mutate(reg = "task noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p1 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("task mean","task volatility","task noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
+                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.85)
+
+s1a <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1), df_master))
+s1b <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X2), df_master))
+s1c <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X3), df_master))
+
+s2a <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1), df_master))
+s2b <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X2), df_master))
+s2c <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X3), df_master))
+
+s3a <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1), df_master))
+s3b <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X2), df_master))
+s3c <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X3), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1a$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s1b$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s1c$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2a$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s2b$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s2c$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3a$coefficients) %>% 
+              mutate(reg = "ESM noise"),
+            as.data.frame(s3b$coefficients) %>% 
+              mutate(reg = "ESM noise"),
+            as.data.frame(s3c$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p2 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, 
+                y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.8)
+
+p0+(p1/p2)+
+  plot_annotation(tag_levels = "A")+
+  plot_layout(width = c(1,4))
+
+ggsave("./figures/figure_x1x3_sep.png",width = 9, height = 7)
+```
+
+### same analysis, with considering magnitude
+```{r}
+ggplot(df_master, aes(x = X1, y = X1o))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+  labs(x = expression("" * beta * "1 outcome"),
+       y = expression("" * beta * "1 magnitude"),
+       title = "Raw coefficients")+
+ggplot(df_master, aes(x = X2, y = X2o))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+  labs(x = expression("" * beta * "2 outcome"),
+       y = expression("" * beta * "2 magnitude"))+
+ggplot(df_master, aes(x = X3, y = X3o))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+  labs(x = expression("" * beta * "3 outcome"),
+       y = expression("" * beta * "3 magnitude"))+
+ggplot(df_master, aes(x = X1, y = X1mo))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+    labs(x = expression("" * beta * "1 outcome"),
+       y = expression("" * beta * "1 magnitude"),
+       title = "Orthogonalized coefficients")+
+ggplot(df_master, aes(x = X2, y = X2mo))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+    labs(x = expression("" * beta * "2 outcome"),
+       y = expression("" * beta * "2 magnitude"))+
+ggplot(df_master, aes(x = X3, y = X3mo))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+    labs(x = expression("" * beta * "3 outcome"),
+       y = expression("" * beta * "3 magnitude"))
+
+ggsave("./figures/corr_mag.png",width = 8, height = 5)
+```
+
+```{r}
+l1 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all2_long %>% 
+            mutate(regression_coef = factor(regression_coef,levels = c("X1mo","X2mo","X3mo"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
+             filter(!is.na(regression_coef)))
+
+summary(l1)
+
+
+l2 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all2_long %>% 
+            mutate(regression_coef = factor(regression_coef,levels = c("X1o","X2o","X3o"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
+             filter(!is.na(regression_coef)))
+
+summary(l2)
+
+p0 <- plot_model(l1, "pred",
+           show.data = T, jitter = T, dot.size = 0.7,ci.style = "bar")+
+  labs(x = "Time of affective impact",
+       title = "reward magnitude (-4~5)")+
+  geom_hline(yintercept = 0, linetype = "dashed")+
+plot_model(l2, "pred",
+           show.data = T, jitter = T, dot.size = 0.7,ci.style = "bar")+
+  labs(x = "Time of affective impact",
+       title = "binary outcome (0 or 1)")+
+  geom_hline(yintercept = 0, linetype = "dashed")+
+plot_layout(nrow = 2)
+
+s1 <- summary(lm(scale(mean_mu) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
+
+s3 <- summary(lm(scale(mean5_s) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "task mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "task volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "task noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p1mo <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("task mean","task volatility","task noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact",
+       title = "Reward magnitude")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
+                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.85)+ 
+  theme(axis.text.x = element_text(angle = 45))
+
+s1 <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
+
+s3 <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
+
+#why is esm mean and esm noise both correlated with trial 1-3?
+s4 <- lm(scale(X1mo) ~ scale(mean5_s_posminusneg) + scale(mean_mu_posminusneg), df_master)
+summary(s4)
+confint(s4, level = .95)
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p2mo <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact",
+       title = "Reward magnitude")+
+  geom_text(aes(x = variable, 
+                y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.8)+ 
+  theme(axis.text.x = element_text(angle = 45))
+
+(p0)+
+  plot_layout(nrow = 1)
+
+ggsave("./figures/figure_x1x3_mag.png",width = 6, height = 4)
+
+
+```
+```{r}
+l1 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all2_long %>% 
+            mutate(regression_coef = factor(regression_coef,levels = c("X1o","X2o","X3o"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
+             filter(!is.na(regression_coef)))
+
+summary(l1)
+
+p0 <- plot_model(l1, "pred",
+           show.data = T, jitter = T, dot.size = 0.7,ci.style = "bar")+
+  labs(x = "Time of affective impact",
+       title = "binary outcome")+
+  geom_hline(yintercept = 0, linetype = "dashed")
+
+s1 <- summary(lm(scale(mean_mu) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
+
+s3 <- summary(lm(scale(mean5_s) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "task mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "task volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "task noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p1o <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("task mean","task volatility","task noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact",
+       title = "Binary outcome")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
+                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.8)+ 
+  theme(axis.text.x = element_text(angle = 45))
+
+s1 <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
+
+s3 <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
+
+#why is esm mean and esm noise both correlated with trial 1-3?
+ppcor::pcor(df_master %>% 
+              dplyr::select(mean5_s_posminusneg,mean_mu_posminusneg,X1) %>% 
+              drop_na())
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p2o <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact",
+       title = "Binary outcome")+
+  geom_text(aes(x = variable, 
+                y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.8)+ 
+  theme(axis.text.x = element_text(angle = 45))
+
+(p1mo+p1o+p2mo+p2o)+
+  plot_annotation(tag_levels = "A")+
+  plot_layout(nrow = 2)
+
+
+ggsave("./figures/figure_x1x3_mag_out.png",width = 8, height = 7)
+```
+
+```{r}
+s1 <- summary(lm(scale(mean_mu_posminusneg_hr) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu_posminusneg_hr) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s3 <- summary(lm(scale(mean5_s_posminusneg_hr) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p2 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, 
+                y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.8)
+
+p0+(p1/p2)+
+  plot_annotation(tag_levels = "A")+
+  plot_layout(width = c(1,4))
+
+ggsave("./figures/figure_x1x3_hr.png",width = 9, height = 7)
+```
+
+## 1.3 reliability of parameters
+```{r}
+df_master_sum <- df_master %>% 
+  dplyr::select(mean5_s,mean_mu,mean5_vmu,
+                # mean_s_pos,mean_mu_pos,mean5_vmu_pos,
+                # mean_s_neg,mean_mu_neg,mean5_vmu_neg,
+                # mean_s_posminusneg,mean_mu_posminusneg,mean5_vmu_posminusneg,
+                mean5_s_posminusneg,mean_mu_posminusneg,mean5_vmu_posminusneg) %>% 
+  pivot_longer(mean5_s:mean5_vmu_posminusneg,names_to = "parameter",
+               values_to = "value") 
+
+p1 <- ggplot(df_master_sum %>% 
+               filter(grepl("_mu",parameter)) %>% 
+               mutate(parameter = factor(parameter, levels = c("mean_mu","mean_mu_posminusneg"),
+                                         labels = c("task mu","ESM mu"))),aes(x = parameter,y = value))+
+    geom_violin(color = muColor)+
+  geom_jitter(size = 0.1)+
+  stat_summary(geom = "pointrange",size = 0.5,color = muColor)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  # scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  labs(y = "parameter value",
+       x = "",
+       title = "Parameter distribution")+
+  
+ggplot(df_master_sum %>% 
+               filter(grepl("_vmu",parameter))%>% 
+               mutate(parameter = factor(parameter, levels = c("mean5_vmu","mean5_vmu_posminusneg"),
+                                         labels = c("task vmu","ESM vmu"))),aes(x = parameter,y = value))+
+    geom_violin(color = vmuColor)+
+  geom_jitter(size = 0.1)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  stat_summary(geom = "pointrange",size = 0.5,color = vmuColor)+
+  labs(y = "",
+       x = "")+
+  
+ggplot(df_master_sum %>% 
+               filter(grepl("_s",parameter))%>% 
+               mutate(parameter = factor(parameter, levels = c("mean5_s","mean5_s_posminusneg"),
+                                         labels = c("task noise","ESM noise"))),aes(x = parameter,y = value))+
+    geom_violin(color = noiseColor)+
+  geom_jitter(size = 0.1)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  stat_summary(geom = "pointrange",size = 0.5,color = noiseColor)+
+  labs(y = "",
+       x = "")
+  
+p2 <- ggplot(df_master, aes(x = mean5_vmu_d1r1, y = mean5_vmu_d2r2))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title ="dependency of task parames on EMA params",
-       x = "task volatility",
-       y = "EMA volatility")+
-ggplot(df_master, aes(x = mean_mu, y = mean_mu_posminusneg))+
+  labs(title ="reliability of task volatility across 2 days",
+       x = "task volatility day 1",
+       y = "task volatility day 2")+
+ggplot(df_master, aes(x = mean5_s_d1r1, y = mean5_s_d2r1))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title ="reliability of task noise across 2 days",
+       x = "task noise day 1",
+       y = "task noise day 2")+
+ggplot(df_master, aes(x = mean_mu_d1r1, y = mean_mu_d2r1))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = muColor, fill = muColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "task mean",
-       y = "EMA mean")+
-ggplot(df_master, aes(x = mean_s, y = mean_s_posminusneg))+
+  labs(title ="reliability of task mu across 2 days",
+       x = "task mu day 1",
+       y = "task mu day 2")
+
+```
+
+```{r}
+df_gor_Est_tc_sum <- df_gor_Est_tc %>% 
+  group_by(id, run) %>% 
+  rename(SD = s) %>% 
+  mutate(trial_id = row_number()) 
+
+df_gor_Est_tc_sum_mean <- df_gor_Est_tc_sum%>% 
+  group_by(run,trial_id) %>% 
+  summarise_at(vars(moodrate,mu,vmu,SD), ~mean(.x,na.rm = T)) %>% 
+  pivot_longer(c(moodrate,mu,vmu,SD), names_to = "parameter", values_to = "mean")
+
+df_gor_Est_tc_sum_se <- df_gor_Est_tc_sum%>% 
+  group_by(run,trial_id) %>% 
+  summarise_at(vars(moodrate,mu,vmu,SD), ~sd(.x,na.rm = T)/sqrt(n())) %>% 
+  pivot_longer(c(moodrate,mu,vmu,SD), names_to = "parameter", values_to = "se")
+
+df_gor_Est_tc_sum <- left_join(df_gor_Est_tc_sum_mean,df_gor_Est_tc_sum_se) %>% 
+  mutate(run = ifelse(run == "d1r1","day 1","day 2"),
+         trial_id = trial_id - 1)
+
+df_gor_Est_tc_sum$parameter <- factor(df_gor_Est_tc_sum$parameter, levels = c('moodrate', 'mu', 'vmu', 'SD'),
+                                        labels = c("original value","mu","vmu",'SD'))
+
+p3 <- ggplot(df_gor_Est_tc_sum, aes(x = trial_id, y = mean, color = run))+
+  geom_line(linewidth = 0.5)+
+  geom_ribbon(aes(x = trial_id, ymin = mean-se, ymax = mean+se, fill = run),
+              alpha = 0.4, color = NA)+
+  facet_wrap(~parameter,nrow = 4, scales = "free_y")+
+  labs(title = "task mood rating parameters",
+       y = "parameter values")+
+  scale_color_brewer(palette = "Set1")+
+  scale_fill_brewer(palette = "Set1")
+```
+
+```{r}
+df_panas_Est_tc_sum <- df_panas_Est_tc %>% 
+  filter(panas_type %in% c("posminusneg")) %>% 
+  rename(SD = s) %>% 
+  group_by(id, panas_type) %>% 
+  mutate(sample_point = row_number()-1) %>% 
+  rowwise() %>% 
+  mutate(day = floor((sample_point+5)/6),
+         time = (sample_point+5) %% 6)
+
+df_panas_Est_tc_sum_mean <- df_panas_Est_tc_sum%>% 
+  group_by(panas_type,sample_point) %>% 
+  summarise_at(vars(origval,mu,vmu,SD), ~mean(.x,na.rm = T)) %>% 
+  pivot_longer(c(origval,mu,vmu,SD), names_to = "parameter", values_to = "mean")
+
+df_panas_Est_tc_sum_se <- df_panas_Est_tc_sum%>% 
+  group_by(panas_type,sample_point) %>% 
+  summarise_at(vars(origval,mu,vmu,SD), ~sd(.x,na.rm = T)/sqrt(n())) %>% 
+  pivot_longer(c(origval,mu,vmu,SD), names_to = "parameter", values_to = "se")
+
+df_panas_Est_tc_sum <- left_join(df_panas_Est_tc_sum_mean,df_panas_Est_tc_sum_se) %>% 
+  mutate(sample_point = sample_point - 1)
+
+df_panas_Est_tc_sum$parameter <- factor(df_panas_Est_tc_sum$parameter, levels = c('origval', 'mu', 'vmu', 'SD'),
+                                        labels = c("original value","mu","vmu",'SD'))
+
+p4 <- ggplot(df_panas_Est_tc_sum, aes(x = sample_point, y = mean, color = panas_type))+
+  geom_line(linewidth = 0.5)+
+  geom_ribbon(aes(x = sample_point, ymin = mean-se, ymax = mean+se, fill = panas_type),
+              alpha = 0.3, color = NA)+
+  facet_wrap(~parameter,nrow = 5, scales = "free_y")+
+  labs(title = "ESM parameters",
+       y = "parameter values")+
+  scale_color_brewer(palette = "Dark2")+
+  scale_fill_brewer(palette = "Dark2")+
+  scale_x_continuous(breaks = seq(0,120,12))+
+  theme(legend.position = "none")
+```
+
+```{r}
+(p3+p4)/p1+
+  plot_layout(heights = c(3,1))+
+  plot_annotation(tag_levels = "A")
+ggsave("./figures/figure_reliability.png",width = 9, height = 8)
+```
+
+```{r}
+summary(lm(scale(mean_mu_d1r1)~scale(mean_mu_d2r1),df_master))
+summary(lm(scale(mean5_vmu_d1r1)~scale(mean5_vmu_d2r1),df_master))
+summary(lm(scale(mean5_s_d1r1)~scale(mean5_s_d2r1),df_master))
+
+t.test(df_master$mean_mu_d1r1, df_master$mean_mu_d2r1, paired = T)
+t.test(df_master$mean5_vmu_d1r1, df_master$mean5_vmu_d2r1, paired = T)
+t.test(df_master$mean5_s_d1r1, df_master$mean5_s_d2r1, paired = T)
+```
+
+
+## 1.3 dependency of EMA params on task params
+
+```{r fig.width= 12, fig.height=4}
+p1 <-ggplot(df_master, aes(x = mean_mu, y = mean_mu_posminusneg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = muColor, fill = muColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title ="Simple Pearson Correlation",
+       x = "task mean",
+       y = "ESM mean")+
+ ggplot(df_master, aes(x = mean5_vmu, y = mean5_vmu_posminusneg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "task volatility",
+       y = "ESM volatility")+
+ggplot(df_master, aes(x = mean5_s, y = mean5_s_posminusneg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "task noise",
-       y = "EMA noise")
+       y = "ESA noise")
 ```
 
+
 ```{r}
-summary(lm(mean5_vmu ~ mean5_vmu_posminusneg + mean_mu + mean_s, df_master))
+l1 <- lm(scale(mean_mu_posminusneg) ~ scale(mean5_vmu) + scale(mean_mu) + scale(mean5_s), df_master)
+s1 <- summary(l1)
+round(confint(l1, level=0.95),3)
 
-summary(lm(mean_mu ~ mean_mu_posminusneg + mean5_vmu + mean_s, df_master))
+l2 <- lm(scale(mean5_vmu_posminusneg) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master)
+s2 <- summary(l2)
+round(confint(l2, level=0.95),3)
 
-summary(lm(mean_s ~ mean_s_posminusneg + mean_mu + mean5_vmu, df_master))
+l3 <- lm(scale(mean5_s_posminusneg) ~ scale(mean5_s) + scale(mean_mu) + scale(mean5_vmu), df_master)
+s3 <- summary(l3)
+round(confint(l3, level=0.95),3)
+
+summary(lm(scale(mean_mu_posminusneg) ~ scale(mean5_s_posminusneg), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("mean5_vmu",bars$variable)] <- "task volatility"
+bars$variable[grepl("mean5_s",bars$variable)] <- "task noise"
+bars$variable[grepl("mean_mu",bars$variable)] <- "task mean"
+
+bars <- bars %>% 
+  mutate(alpha = ifelse(grepl("noise", variable) & grepl("noise", reg), "1", 
+                        ifelse(grepl("volatility", variable) & grepl("volatility", reg), "1",
+                               ifelse(grepl("mean", variable) & grepl("mean", reg), "1" ,"0"))))
+
+p2 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("task mean","task volatility","task noise")),
+                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = variable, alpha = alpha),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_x_discrete(c("task mean","task volatility","task noise"))+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized beta",
+       title = "Regression weights: ESM parameter ~ task parameter")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")
 
 chart.Correlation(df_master %>% 
-                    dplyr::select(mean5_vmu_posminusneg,mean_s_posminusneg,mean_mu_posminusneg, 
+                    dplyr::select(mean5_vmu_posminusneg,mean5_s_posminusneg,mean_mu_posminusneg, 
                                  mean5_vmu,mean_mu,mean_s) %>% 
                     rename(task_vmu = mean5_vmu,
                            task_sd = mean_s,
                            task_mu = mean_mu,
                            ema_vmu = mean5_vmu_posminusneg,
-                           ema_sd = mean_s_posminusneg,
+                           ema_sd = mean5_s_posminusneg,
                            ema_mu = mean_mu_posminusneg))
 ```
+
+```{r}
+p1/p2+
+  plot_annotation(tag_levels = "A")
+
+ggsave("./figures/figure_depend.png",width = 9, height = 7)
+```
+
+```{r fig.width= 12, fig.height=4}
+p1 <-ggplot(df_master, aes(x = mean_mu, y = mean_mu_posminusneg_hr))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = muColor, fill = muColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title ="Simple Pearson Correlation",
+       x = "task mean",
+       y = "ESM mean")+
+ ggplot(df_master, aes(x = mean5_vmu, y = mean5_vmu_posminusneg_hr))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "task volatility",
+       y = "ESM volatility")+
+ggplot(df_master, aes(x = mean5_s, y = mean5_s_posminusneg_hr))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "task noise",
+       y = "ESA noise")
+
+s1 <- summary(lm(scale(mean_mu_posminusneg_hr) ~ scale(mean5_vmu) + scale(mean_mu) + scale(mean5_s), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu_posminusneg_hr) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+
+s3 <- summary(lm(scale(mean5_s_posminusneg_hr) ~ scale(mean5_s) + scale(mean_mu) + scale(mean5_vmu), df_master))
+
+summary(lm(scale(mean_mu_posminusneg) ~ scale(mean5_s_posminusneg), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("mean5_vmu",bars$variable)] <- "task volatility"
+bars$variable[grepl("mean5_s",bars$variable)] <- "task noise"
+bars$variable[grepl("mean_mu",bars$variable)] <- "task mean"
+
+bars <- bars %>% 
+  mutate(alpha = ifelse(grepl("noise", variable) & grepl("noise", reg), "1", 
+                        ifelse(grepl("volatility", variable) & grepl("volatility", reg), "1",
+                               ifelse(grepl("mean", variable) & grepl("mean", reg), "1" ,"0"))))
+
+p2 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("task mean","task volatility","task noise")),
+                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = variable, alpha = alpha),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_x_discrete(c("task mean","task volatility","task noise"))+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized beta",
+       title = "Regression weights: ESM parameter ~ task parameter")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")
+
+chart.Correlation(df_master %>% 
+                    dplyr::select(mean5_vmu_posminusneg_hr,mean5_s_posminusneg_hr,mean_mu_posminusneg_hr, 
+                                 mean5_vmu,mean_mu,mean_s) %>% 
+                    rename(task_vmu = mean5_vmu,
+                           task_sd = mean_s,
+                           task_mu = mean_mu,
+                           ema_vmu = mean5_vmu_posminusneg_hr,
+                           ema_sd = mean5_s_posminusneg_hr,
+                           ema_mu = mean_mu_posminusneg_hr))
+p1/p2+
+  plot_annotation(tag_levels = "A")
+
+ggsave("./figures/figure_depend_hr.png",width = 9, height = 7)
+```
+```{r}
+s4 <- summary(lm(scale(PAminusNA_mean) ~ scale(moodrate_mean) + scale(moodrate_mssd), df_master))
+s5 <- summary(lm(scale(PAminusNA_mssd) ~ scale(moodrate_mean) + scale(moodrate_mssd), df_master))
+
+bars2 <- Reduce(rbind,
+       list(as.data.frame(s4$coefficients) %>% 
+              mutate(reg = "ESM average"),
+            as.data.frame(s5$coefficients) %>% 
+              mutate(reg = "ESM mssd"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars2$variable[grepl("moodrate_mean",bars2$variable)] <- "task average"
+bars2$variable[grepl("moodrate_mssd",bars2$variable)] <- "task mssd"
+
+bars2 <- bars2 %>% 
+  mutate(alpha = ifelse(grepl("average", variable) & grepl("average", reg), "1", 
+                        ifelse(grepl("mssd", variable) & grepl("mssd", reg), "1" ,"0")))
+
+ggplot(df_master, aes(x = moodrate_mssd, y = PAminusNA_mssd))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = 'orange', fill = 'orange') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title ="Simple Pearson Correlation",
+       x = "task rmssd",
+       y = "ESM rmssd")+
+ggplot(bars2 %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("task average","task mssd")),
+                reg = factor(reg,levels = c("ESM average","ESM mssd") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = variable, alpha = alpha),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_x_discrete(c("task average","task mssd"))+
+  scale_fill_brewer(palette = "Set2")+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized beta",
+       title = "Regression weights: ESM statistics ~ task statistics",
+       x = "")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))
+
+ggsave("./figures/figure_depend2.png",width = 9, height = 4)
+```
+
 
 Task affect variables are specifically associated with their ESM counterparts when controlling for other task variables. The only exception is ESM *mu* which was additionally associated with task *SD*.
 
 # part 2: Relationship between task params and (all?) baseline questionnaires
 ```{r, echo=FALSE}
 chart.Correlation(df_master %>% 
-                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum, mean5_vmu,mean_s,mean_mu))
+                    dplyr::select(mean5_vmu,mean5_s,mean_mu,
+                                  mean5_vmu_posminusneg,mean5_s_posminusneg,mean_mu_posminusneg,
+                                  moodrate_mean,moodrate_mssd,PAminusNA_mean,PAminusNA_mssd,X1,X2,X3))
+```
+
+```{r}
+summary(lm(scale(moodrate_mean) ~  scale(X1) + scale(X2) + scale(X3),df_master))
+summary(lm(scale(moodrate_mssd) ~  scale(X1) + scale(X2) + scale(X3),df_master))
+
+summary(lm(scale(moodrate_mean) ~  scale(X1),df_master))
+summary(lm(scale(moodrate_mean) ~  scale(X2),df_master))
+summary(lm(scale(moodrate_mean) ~  scale(X3),df_master))
+
+summary(lm(moodrate_mean ~ mean_mu + mean5_vmu + mean_s,df_master))
+summary(lm(moodrate_mssd ~ mean_mu + mean5_vmu + mean_s,df_master))
 ```
 
 ## 2.2 Task params and baseline questionnaires (paper 1 or 2?)
 
 ### TEPS is positively associated with task SD. However, considering from section 1.3 that task SD is associated with EMA mu, we want to control for EMA mu. After controlling, the correlation is still significant at p < .05.
+### 1.2.3 Dependency of baseline questionnaire on emotional reactivity
 
-```{r fig.width= 15, fig.height=4}
-ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "task mood volatility")+
-ggplot(df_master, aes(x = TEPS_sum, y = mean_s))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "task mood noise")+
-ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "task mood volatility")+
-ggplot(df_master, aes(x = HPS_sum, y = mean_s))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p"))) +
-  plot_layout(nrow = 1)
-  labs(y = "task mood noise")
-  
-summary(lm(TEPS_sum ~ mean_s + mean_mu_posminusneg,df_master))
-ppcor::pcor(df_master %>% dplyr::select(mean_s,mean_mu_posminusneg,TEPS_sum))
+```{r}
+s1 <- summary(lm(scale(TEPS_sum) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s2 <- summary(lm(scale(HPS_sum) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+s3 <- summary(lm(scale(CESD_sum) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "TEPS"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "HPS"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "CESD_sum"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "trial -1~3"
+bars$variable[grepl("X2",bars$variable)] <- "trial -4~6"
+bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
+
+p1 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                reg = factor(reg,levels = c("TEPS","HPS","Trait NA") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = variable),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_brewer(palette = "Greys", direction = -1)+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.35)
+
 ```
 
+
+```{r fig.width= 15, fig.height=4}
+s1 <- summary(lm(scale(TEPS_sum) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+
+s2 <- summary(lm(scale(HPS_sum) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+
+s3 <- summary(lm(scale(CESD_sum) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "TEPS"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "HPS"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "CESD"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("mean_mu",bars$variable)] <- "task mean"
+bars$variable[grepl("mean5_vmu",bars$variable)] <- "task volatility"
+bars$variable[grepl("mean5_s",bars$variable)] <- "task noise"
+
+p2 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("task mean","task volatility","task noise")),
+                reg = factor(reg,levels = c("TEPS","HPS","CESD") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = variable),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_brewer(palette = "Greys", direction = -1)+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.35,0.35)
+```
+
+```{r}
+s1 <- summary(lm(scale(TEPS_sum) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+
+s2 <- summary(lm(scale(HPS_sum) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+
+s3 <- summary(lm(scale(CESD_sum) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "TEPS"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "HPS"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "CESD"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("mean_mu",bars$variable)] <- "ESM mean"
+bars$variable[grepl("mean5_vmu",bars$variable)] <- "ESM volatility"
+bars$variable[grepl("mean5_s",bars$variable)] <- "ESM noise"
+
+p3 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("ESM mean","ESM volatility","ESM noise")),
+                reg = factor(reg,levels = c("TEPS","HPS","CESD") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = variable),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_brewer(palette = "Greys", direction = -1)+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")
+
+p3+p1+p2+plot_layout(nrow =3)+
+  plot_annotation(tag_levels = "A")
+ggsave("./figures/figure_x1x3_qs.png",width = 8, height = 12)
+```
+
+
+```{r}
+summary(lm(scale(moodrate_mean) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+summary(lm(scale(moodrate_mssd) ~  scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+
+summary(lm(scale(moodrate_mean) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+summary(lm(scale(moodrate_mssd) ~  scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+```
+
+#we can take the impact of WoF as an independent exam of the affective responsivity?
+
+```{r}
+df_wof_react_long <- df_wof_react %>% 
+  dplyr::select(Participant.Public.ID,wof_order,winday_X1:loseday_X3) %>% 
+  pivot_longer(winday_X1:loseday_X3,names_to = c("day","var"), values_to = "X_val",names_sep = "_")
+
+l1 <- lmer(X_val ~ day * var + (1|Participant.Public.ID) + (1|wof_order),df_wof_react_long)
+summary(l1)
+
+plot_model(l1, type = "pred", terms = c("var","day"))+
+  geom_hline(yintercept = 0)
+
+
+df_wof_Xs_long <- df_master %>% 
+  dplyr::select(Prolific.Id,wof_order,wof_X1:wof_X3) %>% 
+  pivot_longer(wof_X1:wof_X3,names_to = "var", values_to = "X_val",names_prefix = "wof_")
+
+l1 <- lmer(X_val ~ var + (1|Prolific.Id) + (1|wof_order),df_wof_Xs_long)
+summary(l1)
+
+plot_model(l1, type = "pred", terms = c("var"))+
+  geom_hline(yintercept = 0)
+
+summary(lm(mean_mu ~ wof_X1 + wof_X2 + wof_X3, df_master))
+summary(lm(mean5_vmu ~ wof_X1 + wof_X2 + wof_X3, df_master))
+summary(lm(mean5_s ~ wof_X1 + wof_X2 + wof_X3, df_master))
+
+summary(lm(X1 ~ wof_X1 + wof_X2 + wof_X3, df_master))
+summary(lm(X2 ~ wof_X1 + wof_X2 + wof_X3, df_master))
+summary(lm(X3 ~ wof_X1 + wof_X2 + wof_X3, df_master))
+```
+
+```{r}
+l1 <- lmer(X_val ~ var + (1|Prolific.Id),df_wof_Xs_long %>% 
+            mutate(var = factor(var,levels = c("X1","X2","X3"),labels = c("trial 1~3","trial 4~6","trial 7~9"))))
+
+summary(l1)
+summary(lmer(X_val ~ var + (1|Prolific.Id),df_wof_Xs_long %>% 
+            mutate(var = factor(var,levels = c("X2","X3","X1")))))
+
+p00 <- plot_model(l1,type = "pred",
+           show.data = T, jitter = T, dot.size = 0.7,ci.style = "bar")+
+  labs(x = "Time of affective impact",
+       title = "",
+       y = "value")+
+  geom_hline(yintercept = 0, linetype = "dashed")
+
+s1 <- summary(lm(scale(X1) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+s2 <- summary(lm(scale(X2) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+s3 <- summary(lm(scale(X3) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "trial -1~3"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "trial -4~6"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "trial -7~9"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "wof X1"
+bars$variable[grepl("X2",bars$variable)] <- "wof X2"
+bars$variable[grepl("X3",bars$variable)] <- "wof X3"
+
+p0 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(reg = factor(reg, levels = c("trial -1~3","trial -4~6","trial -7~9")),
+                variable = factor(variable,levels = c("wof X1","wof X2","wof X3") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_brewer(palette = "Greys")+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
+                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.4,0.4)
+
+s1 <- summary(lm(scale(mean_mu) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+s3 <- summary(lm(scale(mean5_s) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "task mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "task volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "task noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "wof X1"
+bars$variable[grepl("X2",bars$variable)] <- "wof X2"
+bars$variable[grepl("X3",bars$variable)] <- "wof X3"
+
+p1 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+           mutate(reg = factor(reg,levels = c("task mean","task volatility","task noise"))))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
+                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.4,0.4)
+
+s1 <- summary(lm(scale(mean_mu_posminusneg) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+s2 <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+s3 <- summary(lm(scale(mean5_s_posminusneg) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+bars <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM mean"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM volatility"),
+            as.data.frame(s3$coefficients) %>% 
+              mutate(reg = "ESM noise"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$variable[grepl("X1",bars$variable)] <- "wof X1"
+bars$variable[grepl("X2",bars$variable)] <- "wof X2"
+bars$variable[grepl("X3",bars$variable)] <- "wof X3"
+
+p2 <- ggplot(bars %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = reg),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c(muColor,vmuColor,noiseColor))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized regression weights",
+       x = "Time of affective impact")+
+  geom_text(aes(x = variable, 
+                y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  theme(legend.position = "none")+
+  ylim(-0.4,0.4)
+
+
+(p0/p1/p2)+
+  plot_annotation(tag_levels = "A")
+
+ggsave("./figures/figure_x1x3_WOF.png",width = 7, height = 9)
+
+summary(lm(scale(mean5_s) ~ scale(wof_X1) + scale(X1), df_master))
+summary(lm(scale(mean5_vmu) ~ scale(wof_X3) + scale(X3), df_master))
+```
+
+```{r}
+summary(lm(scale(TEPS_sum) ~ scale(winday_X1) + scale(winday_X2) + scale(winday_X3), df_master))
+summary(lm(scale(TEPS_sum) ~ scale(loseday_X1) + scale(loseday_X2) + scale(loseday_X3), df_master))
+
+summary(lm(scale(HPS_sum) ~ scale(winday_X1) + scale(winday_X2) + scale(winday_X3), df_master))
+summary(lm(scale(HPS_sum) ~ scale(loseday_X1) + scale(loseday_X2) + scale(loseday_X3), df_master))
+# summary(lm(scale(HPS_sum) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
+
+summary(lm(scale(CESD_sum) ~ scale(winday_X1) + scale(winday_X2) + scale(winday_X3), df_master))
+summary(lm(scale(CESD_sum) ~ scale(loseday_X1) + scale(loseday_X2) + scale(loseday_X3), df_master))
+
+
+summary(lm(scale(winday_X3) ~ scale(TEPS_sum) + scale(HPS_sum) + scale(CESD_sum), df_master))
+summary(lm(scale(winday_X2) ~ scale(TEPS_sum) + scale(HPS_sum) + scale(CESD_sum), df_master))
+summary(lm(scale(winday_X1) ~ scale(TEPS_sum) + scale(HPS_sum) + scale(CESD_sum), df_master))
+
+summary(lm(scale(loseday_X3) ~ scale(TEPS_sum) + scale(HPS_sum) + scale(CESD_sum), df_master))
+summary(lm(scale(loseday_X2) ~ scale(TEPS_sum) + scale(HPS_sum) + scale(CESD_sum), df_master))
+summary(lm(scale(loseday_X1) ~ scale(TEPS_sum) + scale(HPS_sum) + scale(CESD_sum), df_master))
+```
+
+```{r}
+summary(lm(scale(TEPS_sum) ~ scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+summary(lm(scale(TEPS_sum) ~ scale(mean5_vmu) + scale(mean5_s), df_master))
+
+summary(lm(scale(HPS_sum) ~ scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+summary(lm(scale(HPS_sum) ~ scale(mean5_vmu) + scale(mean5_s), df_master))
+
+summary(lm(scale(HPS_sum) ~ scale(mean5_s_posminusneg), df_master))
+summary(lm(scale(HPS_sum) ~ scale(mean5_s), df_master))
+
+summary(lm(scale(HPS_sum) ~scale(mean5_s_posminusneg) + scale(mean5_s), df_master))
+
+# df_master <- df_master %>% 
+#   mutate(HPS_group = ifelse(HPS_sum > 64, "high",
+#                             ifelse(HPS_sum <= 64, "low",NA)))
+# 
+# ggplot(df_master, aes(x = HPS_group, y = mean5_s_posminusneg))+
+#   stat_summary()+
+# ggplot(df_master, aes(x = HPS_group, y = mean5_s))+
+#   stat_summary()
+
+ggplot(df_master, aes(x = HPS_sum, y = mean5_s))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "Hypomania Personality Score",
+       y = "ESM noise")+
+ggplot(df_master, aes(x = HPS_sum, y = mean5_s_posminusneg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "Hypomania Personality Score",
+       y = "task noise")
+
+# ggplot(df_master, aes(x = CESD_sum, y = mean_mu_posminusneg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm")+
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "CESD Score",
+#        y = "ESM mu")+
+# ggplot(df_master, aes(x = CESD_sum, y = mean_mu))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm")+
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "CESD Score",
+#        y = "task mu")
+
+ggplot(df_master, aes(x = mean5_vmu, y = TEPS_sum))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "TEPS Score",
+       x = "ESM volatility")+
+ggplot(df_master, aes(x = mean5_vmu_posminusneg, y = TEPS_sum))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm")+
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(y = "TEPS Score",
+       x = "task volatility")
+
+chart.Correlation(df_master %>% 
+                    dplyr::select(mean5_vmu,mean_mu,mean5_s,TEPS_sum,CESD_sum,HPS_sum,STAI_SA_sum,STAI_TA_sum) %>% 
+                    rename(task_vmu = mean5_vmu,
+                           task_sd = mean5_s,
+                           task_mu = mean_mu))
+```
+
+
+### show diurnal stuff
+```{r}
+df_panas_Est_tc_diur <- df_panas_Est_tc %>% 
+  group_by(id,panas_type) %>% 
+  mutate(day_id = floor((trial_id -1) / 6) + 1,
+         time_id = trial_id - 6 * (day_id - 1)) %>% 
+  mutate(origval = origval - mean(origval,na.rm = T))
+
+df_panas_Est_tc_diur_sum <- df_panas_Est_tc_diur%>% 
+  group_by(id,panas_type,time_id) %>% 
+  summarise(origval = mean(origval, na.rm = T))%>% 
+  group_by(panas_type,time_id) %>% 
+  summarise(mean = mean(origval, na.rm = T),
+            se = sd(origval, na.rm = T)/sqrt(n()))
+
+ggplot(df_panas_Est_tc_diur_sum %>% filter(panas_type == "posminusneg"), aes(x = time_id, y = mean))+
+  geom_line(size = 2)+
+  ylim(-1,1)+
+  labs(title = "PA - NA",
+       x = "time (h)",
+       y = "affect (mean dev)")+
+  scale_x_continuous(breaks = 1:6, labels = c("9~11","11~1","1~3","3~5","5~7","7~9"))+
+  geom_ribbon(aes(x = time_id, ymin = mean - se, ymax = mean + se), alpha = 0.4)+
+ggplot(df_panas_Est_tc_diur_sum %>% filter(panas_type == "pos"), aes(x = time_id, y = mean))+
+  geom_line(size = 2)+
+  ylim(-1,1)+
+  labs(title = "PA",
+       x = "time (h)",
+       y = "affect (mean dev)")+
+  scale_x_continuous(breaks = 1:6, labels = c("9~11","11~1","1~3","3~5","5~7","7~9"))+
+ geom_ribbon(aes(x = time_id, ymin = mean - se, ymax = mean + se), alpha = 0.4)+
+ggplot(df_panas_Est_tc_diur_sum %>% filter(panas_type == "neg"), aes(x = time_id, y = mean))+
+  geom_line(size = 2)+
+  geom_ribbon(aes(x = time_id, ymin = mean - se, ymax = mean + se), alpha = 0.4)+
+  ylim(-1,1)+
+  labs(title = "NA",
+       x = "time (h)",
+       y = "affect (mean dev)")+
+  scale_x_continuous(breaks = 1:6, labels = c("9~11","11~1","1~3","3~5","5~7","7~9"))
+
+ggsave("./figures/figure_diurnal.png",width = 8, height = 3)
+```
 

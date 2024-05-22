@@ -19,6 +19,7 @@ these associations, we find specificity in terms of different scales and them ma
 
 # library 
 ```{r warning=FALSE,message=FALSE}
+rm(list = ls())
 source(here::here("load_library.R"))
 ```
 
@@ -39,11 +40,6 @@ rmarkdown::render("read_data.Rmd")
 ## 2.1 EMA summary statistics and baseline questionnaires (gist: poor differentiation between mean and se)
 
 P.S. We used PA and NA separately due to differentiation in the literature and RDoc
-```{r}
-chart.Correlation(df_master %>% 
-                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,
-                           PA_mean,PA_se,NA_mean,NA_se))
-```
 
 ## 2.2 EMA bayes params and baseline questionnaires
 *Ask Mike here: how to justify using posminusneg vs. pos and neg separately?*
@@ -52,141 +48,337 @@ chart.Correlation(df_master %>%
 
 ```{r}
 chart.Correlation(df_master %>% 
-                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum, STAI_TA_sum,STAI_TA_sum,
-                           mean5_vmu_pos,mean_mu_pos,mean_s_pos,
-                           mean5_vmu_neg,mean_mu_neg,mean_s_neg))
+                    dplyr::select(TEPS_ant_sum,TEPS_con_sum,HPS_sum,CESD_sum, STAI_TA_sum,STAI_SA_sum))
 ```
 
 ### We would expect some differentiation between PA and NA parameters; TEPS should be correlated with PA variability., and depression/anxiety should be correlated with NA variability. Motivated by this differentiability, we will now examine these specific links.
 
 ```{r echo=FALSE}
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_mu_pos,TEPS_sum))
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_pos,TEPS_sum))
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_pos,TEPS_sum))
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_mu_neg,TEPS_sum))
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_neg,TEPS_sum))
 ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_neg,TEPS_sum))
 ```
 
 ### Here, we see that TEPS and HPS are differentially associated with the variability of EMA PA.
 ```{r fig.width= 12,fig.height= 8}
+ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = muColor, color = muColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "TEPS",
+       x = "PA mu",
+       y = "TEPS total",
+       subtitle = "partial r = 0.318, p < .001")+
 ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "TEPS",
-       y = "PA vmu",
+  labs(x = "PA volatility",
+       y = "TEPS total",
        subtitle = "partial r = 0.156, p = .004")+
 ggplot(df_master, aes(x = TEPS_sum, y = mean_s_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "PA noise",
+  labs(x = "PA noise",
+       y = "TEPS total",
        subtitle = "partial r = -0.028, p = .608")+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = muColor, color = muColor, linetype = "dashed", alpha = 0.1) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "NA mu",
+       y = "TEPS total",
+       subtitle = "partial r = -.201, p < .001")+
 ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_neg))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA vmu",
+  labs(x = "NA volatility",
+       y = "TEPS total",
        subtitle = "partial r = -0.091, p = .093")+
 ggplot(df_master, aes(x = TEPS_sum, y = mean_s_neg))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA noise",
+  labs(x = "NA noise",
+       y = "TEPS total",
        subtitle = "partial r = -0.109, p = .045") + 
+ggplot(df_master, aes(x = HPS_sum, y = mean_mu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "HPS",x = "PA mu",
+       y = "HPS total",
+       subtitle = "partial r = 0.095, p = .080")+ 
 ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "HPS",y = "PA vmu",
+  labs(x = "PA volatility",
+       y = "HPS total",
        subtitle = "partial r = 0.064, p = .240")+
 ggplot(df_master, aes(x = HPS_sum, y = mean_s_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "PA noise",
+  labs(x = "PA noise",
+       y = "HPS total",
        subtitle = "partial r = 0.092, p = .091")+
+ggplot(df_master, aes(x = HPS_sum, y = mean_mu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = muColor, color = muColor, alpha = 0.1, linetype = "dashed",) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "NA mu",
+       y = "HPS total",
+       subtitle = "partial r = .284, p < .001")+
 ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_neg))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed") +
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA vmu",
+  labs(x = "NA volatility",
+       y = "HPS total",
        subtitle = "partial r = 0.118, p = .029")+
 ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed") +
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA noise",
+  labs(x = "NA noise",
+       y = "HPS total",
        subtitle = "partial r = 0.298, p < .001")+
-  plot_layout(nrow = 2)
+  plot_layout(nrow = 4)
+
+ggsave("./figures/figure_hpsteps.png",width = 7, height = 12)
 
 ```
 
-## 2.3 factor analysis of all baseline questionnaires to capture positive and negative affectivity
+
+
+<!-- ## 2.3 factor analysis of all baseline questionnaires to capture positive and negative affectivity -->
+<!-- ```{r} -->
+<!-- df_fa <- df_master %>% dplyr::select(CESD_sum, STAI_TA_sum,STAI_SA_sum) -->
+<!-- # df_fa <- df_master %>% dplyr::select(HPS_sum,TEPS_ant_sum,TEPS_con_sum,CESD_sum, STAI_TA_sum,STAI_SA_sum) -->
+<!-- # df_fa <- df_master %>% dplyr::select(CESD1:CESD20,HPS1:HPS24,,TEPS1:TEPS18,STAI_SA1:STAI_TA20) -->
+
+<!-- ev <- eigen(cor(na.omit(df_fa))) # get eigenvalues -->
+<!-- ap <- parallel(subject=nrow(df_fa),var=ncol(df_fa),rep=100,cent=.05) -->
+<!-- nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea) -->
+<!-- plotnScree(nS)# scree plot -->
+
+<!-- psych::fa(df_fa, nfactors = 1, -->
+<!--           rotate = "varimax", -->
+<!--           scores = "regression") -->
+
+<!-- df_master_ <- cbind(df_master, psych::fa(df_fa, nfactors = 1, -->
+<!--           rotate = "varimax", -->
+<!--           scores = "regression")$scores) %>%  -->
+<!--   rename(trait_NA = MR1) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- ggplot(df_master_, aes(x = trait_NA, y = TEPS_ant_sum))+ -->
+<!--   geom_point()+ -->
+<!--   geom_smooth(method = "lm") + -->
+<!--   stat_poly_eq(use_label(c("R2","p")), color= 'red')+ -->
+<!-- ggplot(df_master_, aes(x = trait_NA, y = TEPS_con_sum))+ -->
+<!--   geom_point()+ -->
+<!--   geom_smooth(method = "lm") + -->
+<!--   stat_poly_eq(use_label(c("R2","p")), color= 'red')+ -->
+<!-- ggplot(df_master_, aes(x = HPS_sum, y = trait_NA))+ -->
+<!--   geom_point()+ -->
+<!--   geom_smooth(method = "lm") + -->
+<!--   stat_poly_eq(use_label(c("R2","p")), color= 'red') -->
+
+<!-- summary(lm(trait_NA~TEPS_con_sum+TEPS_ant_sum, df_master_)) -->
+<!-- lm.beta::lm.beta(lm(trait_NA~TEPS_con_sum+TEPS_ant_sum, df_master_)) -->
+
+<!-- summary(lm(trait_NA~HPS_sum, df_master_)) -->
+<!-- lm.beta::lm.beta(lm(trait_NA~HPS_sum, df_master_)) -->
+
+<!-- summary(lm(TEPS_sum~HPS_sum, df_master_)) -->
+<!-- lm.beta::lm.beta(lm(TEPS_sum~HPS_sum, df_master_)) -->
+<!-- ``` -->
+
 ```{r}
-df_fa <- df_master %>% dplyr::select(HPS_sum,TEPS_ant_sum,TEPS_con_sum,CESD_sum, STAI_TA_sum,STAI_SA_sum)
+df_corr <- df_master %>% 
+  dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,#trait_NA,
+                           PA_mean,PA_se,NA_mean,NA_se) %>% 
+  rename(TEPS = TEPS_sum, HPS = HPS_sum, CESD = CESD_sum,
+         `STAI-s` = STAI_SA_sum,`STAI-t` = STAI_TA_sum,
+         PA_sd = PA_se, NA_sd = NA_se)
 
-ev <- eigen(cor(na.omit(df_fa))) # get eigenvalues
-ap <- parallel(subject=nrow(df_fa),var=ncol(df_fa),rep=100,cent=.05)
-nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)
-plotnScree(nS)# scree plot
+chart.Correlation(df_corr)
 
-psych::fa(df_fa, nfactors = 2,
-          rotate = "varimax",
-          scores = "regression")
+corm <- cor(df_corr,
+            method = "pearson", use = "complete.obs")
 
-df_master_ <- cbind(df_master, psych::fa(df_fa, nfactors = 2,
-          rotate = "varimax",
-          scores = "regression")$scores) %>% 
-  rename(trait_NA = MR1,
-         trait_PA= MR2)
+p.mat <- cor_pmat(df_corr,
+            method = "pearson", use = "complete.obs")
+
+knitr::kable(corm, digits = 3)
+knitr::kable(p.mat, digits = 3)
+
+ggcorrplot2::ggcorrplot.mixed(corm, 
+           p.mat = p.mat)
+
+ggsave("./figures/figure_corr.png",width = 8, height = 5)
 ```
 
-### Similar to what we found in 2.2, trait PA (hedonia) is associated with higher PA volatility but not NA; trait NA is associated with higher NA but not variability.
+```{r}
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,PA_mean))
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,PA_se))
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,NA_mean))
+ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,NA_se))
+```
+
+
+### Similar to what we found in 2.2, trait NA is associated with higher NA but not variability.
+```{r echo=FALSE}
+c1 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_mu_pos))
+c2 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean5_vmu_pos))
+c3 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_s_pos))
+c4 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_mu_neg))
+c5 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean5_vmu_neg))
+c6 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_s_neg))
+```
+
 ```{r fig.width= 12,fig.height= 8}
-ggplot(df_master_, aes(x = trait_NA, y = mean5_vmu_pos))+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_pos))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  geom_smooth(method = "lm", fill = muColor, color = muColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "EMA variability and Trait NA",
-       y = "PA vmu")+
-ggplot(df_master_, aes(x = trait_NA, y = mean_s_pos))+
+  labs(title = "TEPS",
+       x = "PA mu",
+       y = "TEPS total",
+       subtitle = paste0("partial r = ", round(c1$estimate[2,4],2),", p = ",round(c4$p.value[2,4],2)))+
+# ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA volatility",
+#        y = "TEPS total",
+#        subtitle = paste0("partial r = ", round(c2$estimate[2,4],2),", p = .003"))+
+# ggplot(df_master, aes(x = TEPS_sum, y = mean_s_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA noise",
+#        y = "TEPS total",
+#        subtitle = paste0("partial r = ", round(c3$estimate[2,4],2),", p = .725"))+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_neg))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  geom_smooth(method = "lm", fill = muColor, color = muColor, linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "PA noise")+
-ggplot(df_master_, aes(x = trait_NA, y = mean5_vmu_neg))+
+  labs(x = "NA mu",
+       y = "TEPS total",
+        subtitle = paste0("partial r = ", round(c4$estimate[2,4],2),", p = .114"))+
+# ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA volatility",
+#        y = "TEPS total",
+#        subtitle = paste0("partial r = ", round(c5$estimate[2,4],2),", p = .732"))+
+# ggplot(df_master, aes(x = TEPS_sum, y = mean_s_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA noise",
+#        y = "TEPS total",
+#        subtitle = paste0("partial r = ", round(c6$estimate[2,4],2),", p = .717"))+
+ggplot(df_master, aes(x = HPS_sum, y = mean_mu_pos))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed") +
+  geom_smooth(method = "lm", fill = muColor, color = muColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA vmu")+
-ggplot(df_master_, aes(x = trait_NA, y = mean_s_neg))+
+  labs(title = "HPS",x = "PA mu",
+       y = "HPS total",
+       subtitle = paste0("partial r = ", round(c1$estimate[1,4],2),", p < .001"))+
+# ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA volatility",
+#        y = "HPS total",
+# subtitle = paste0("partial r = ", round(c2$estimate[1,4],2),", p = .354"))+
+# ggplot(df_master, aes(x = HPS_sum, y = mean_s_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA noise",
+#        y = "HPS total",
+# subtitle = paste0("partial r = ", round(c3$estimate[1,4],2),", p = .133"))+
+ggplot(df_master, aes(x = HPS_sum, y = mean_mu_neg))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed") +
+  geom_smooth(method = "lm", fill = muColor, color = muColor, alpha = 0.1, linetype = "dashed",) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA noise")+
+  labs(x = "NA mu",
+       y = "HPS total",
+        subtitle = paste0("partial r = ", round(c4$estimate[1,4],2),", p < .001"))+
+# ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", color = 'grey', fill = 'grey', linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA volatility",
+#        y = "HPS total",
+#         subtitle = paste0("partial r = ", round(c5$estimate[1,4],2),", p = .338"))+
+# ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA noise",
+#        y = "HPS total",
+#        subtitle = paste0("partial r = ", round(c6$estimate[1,4],2),", p < .001"))+
+ggplot(df_master, aes(y = trait_NA, x = mean_mu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = muColor, color = muColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(title = "Trait NA",
+       x = "PA mu",
+       y = "trait NA",
+       subtitle = paste0("partial r = ", round(c1$estimate[3,4],2),", p < .001"))+
+# ggplot(df_master_, aes(y = trait_NA, x = mean5_vmu_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA volatility",
+#        y = "trait NA",
+#        subtitle = paste0("partial r = ", round(c2$estimate[3,4],2),", p = .416"))+
+# ggplot(df_master_, aes(y = trait_NA, x = mean_s_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA noise",
+#        y = "trait NA",
+#        subtitle = paste0("partial r = ", round(c3$estimate[3,4],2),", p = .616"))+
+ggplot(df_master, aes(y = trait_NA, x = mean_mu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = muColor, color = muColor, linetype = "dashed", alpha = 0.1) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "NA mu",
+       y = "trait NA",
+       subtitle = paste0("partial r = ", round(c4$estimate[3,4],2),", p < .001"))+
+# ggplot(df_master_, aes(y = trait_NA, x = mean5_vmu_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA vmu",
+#        y = "trait NA",
+#        subtitle = paste0("partial r = ", round(c5$estimate[3,4],2),", p < .001"))+
+# ggplot(df_master_, aes(y = trait_NA, x = mean_s_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA noise",
+#        y = "trait NA",
+#        subtitle = paste0("partial r = ", round(c6$estimate[3,4],2),", p < .001"))+
 
-ggplot(df_master_, aes(x = trait_PA, y = mean5_vmu_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "EMA variability and Trait PA",y = "PA vmu")+
-ggplot(df_master_, aes(x = trait_PA, y = mean_s_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "PA noise")+
-ggplot(df_master_, aes(x = trait_PA, y = mean5_vmu_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA vmu")+
-ggplot(df_master_, aes(x = trait_PA, y = mean_s_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed") +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(y = "NA noise")+
 
-  plot_layout(nrow = 2)
+  plot_layout(nrow = 1)
+
+ggsave("./figures/figure_hpsteps2.png",width = 12, height = 3)
 ```
 
 # Part 3 (SI): diurnal contributions to the EMA variability
@@ -194,6 +386,100 @@ ggplot(df_master_, aes(x = trait_PA, y = mean_s_neg))+
 source(here::here("fit_diurnal_model.R"))
 ```
 
+```{r fig.width= 12,fig.height= 8}
+ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "PA volatility",
+       y = "TEPS total",
+       title = "TEPS",
+       subtitle = paste0("partial r = ", round(c2$estimate[2,4],2),", p = .003"))+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_s_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "PA noise",
+       y = "TEPS total",
+       subtitle = paste0("partial r = ", round(c3$estimate[2,4],2),", p = .725"))+
+ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "NA volatility",
+       y = "TEPS total",
+       subtitle = paste0("partial r = ", round(c5$estimate[2,4],2),", p = .732"))+
+ggplot(df_master, aes(x = TEPS_sum, y = mean_s_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "NA noise",
+       y = "TEPS total",
+       subtitle = paste0("partial r = ", round(c6$estimate[2,4],2),", p = .717"))+
+ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "PA volatility",
+       title = "HPS",
+       y = "HPS total",
+subtitle = paste0("partial r = ", round(c2$estimate[1,4],2),", p = .354"))+
+ggplot(df_master, aes(x = HPS_sum, y = mean_s_pos))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "PA noise",
+       y = "HPS total",
+subtitle = paste0("partial r = ", round(c3$estimate[1,4],2),", p = .133"))+
+ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = 'grey', fill = 'grey', linetype = "dashed", alpha = 0.1) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "NA volatility",
+       y = "HPS total",
+        subtitle = paste0("partial r = ", round(c5$estimate[1,4],2),", p = .338"))+
+ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
+  stat_poly_eq(use_label(c("R2","p")))+
+  labs(x = "NA noise",
+       y = "HPS total",
+       subtitle = paste0("partial r = ", round(c6$estimate[1,4],2),", p < .001"))+
+# ggplot(df_master, aes(y = CESD_sum, x = mean5_vmu_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA volatility",
+#        y = "trait NA",
+#        title = "Trait NA",
+#        subtitle = paste0("partial r = ", round(c2$estimate[3,4],2),", p = .416"))+
+# ggplot(df_master, aes(y = CESD_sum, x = mean_s_pos))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "PA noise",
+#        y = "trait NA",
+#        subtitle = paste0("partial r = ", round(c3$estimate[3,4],2),", p = .616"))+
+# ggplot(df_master, aes(y = CESD_sum, x = mean5_vmu_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA vmu",
+#        y = "trait NA",
+#        subtitle = paste0("partial r = ", round(c5$estimate[3,4],2),", p < .001"))+
+# ggplot(df_master, aes(y = CESD_sum, x = mean_s_neg))+
+#   geom_point(size = 0.5)+
+#   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
+#   stat_poly_eq(use_label(c("R2","p")))+
+#   labs(x = "NA noise",
+#        y = "trait NA",
+#        subtitle = paste0("partial r = ", round(c6$estimate[3,4],2),", p < .001"))+
+# 
+
+  plot_layout(nrow = 2)
+
+ggsave("./figures/figure_hpsteps3.png",width = 8, height = 6)
+```
 ## 3.1 plot example diurnal fit
 ### PA: Across subjects, the quadratic term is negative and linear term is positive.
 
