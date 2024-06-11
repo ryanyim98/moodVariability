@@ -33,182 +33,87 @@ muColor <- 'forestgreen'
 
 # load and combine data
 ```{r warning=FALSE,message=FALSE}
-rmarkdown::render("read_data.Rmd")
+rmarkdown::render("read_data_survey_ema.Rmd")
 ```
 
-# Part 2: Relationship between EMA and baseline questionnaires
-## 2.1 EMA summary statistics and baseline questionnaires (gist: poor differentiation between mean and se)
+```{r warning=FALSE,message=FALSE}
+source(here::here("fit_diurnal_model.R"))
 
+df_lm_sum <- read_csv(paste(outdir, 'panas_lm_params.csv'))
+
+df_master_ema <- left_join(df_master_ema, df_lm_sum %>% 
+  dplyr::select(Prolific.Id,model,Intercept_Estimate:t_Estimate,R2c) %>% 
+  pivot_wider(names_from = model, values_from = c(Intercept_Estimate:R2c)))
+```
+# demographics
+```{r}
+#sex
+sum(is.na(demo_info_ema$Sex))
+table(demo_info_ema$Sex)
+table(demo_info_ema$Sex)/343*100
+
+#age
+sum(is.na(demo_info_ema$age))
+table(demo_info_ema$age)
+mean(demo_info_ema$age, na.rm = T)
+sd(demo_info_ema$age, na.rm = T)
+min(demo_info_ema$age, na.rm = T)
+max(demo_info_ema$age, na.rm = T)
+
+#country
+
+table(demo_info_ema$`Country of Birth`)
+table(demo_info_ema$`First Language`)
+
+
+#questionnaires
+nrow(df_master_ema)
+summary(df_master_ema$CESD_sum)
+sd(df_master_ema$CESD_sum)
+
+summary(df_master_ema$TEPS_sum)
+sd(df_master_ema$TEPS_sum)
+
+summary(df_master_ema$HPS_sum)
+sd(df_master_ema$HPS_sum)
+
+summary(df_master_ema$STAI_SA_sum)
+sd(df_master_ema$STAI_SA_sum)
+
+summary(df_master_ema$STAI_TA_sum)
+sd(df_master_ema$STAI_TA_sum)
+
+#missing panas
+table(df_PANAS_availability$n_panas)
+mean(df_PANAS_availability$n_panas)
+sd(df_PANAS_availability$n_panas)
+```
+
+## 1.1 EMA summary statistics and baseline questionnaires
+
+### motivating the use of the model
 P.S. We used PA and NA separately due to differentiation in the literature and RDoc
 
-## 2.2 EMA bayes params and baseline questionnaires
-*Ask Mike here: how to justify using posminusneg vs. pos and neg separately?*
+HPS correlated with higher PA and NA; TEPS correlated with higher PA and lower NA; CESD/STAI correlated with higher NA and lower PA
 
-### When using the difference score (PA minus NA), we see that the noise of this 'net mood rating' is correlated with HPS; mu is correlated with TEPS and negative affectivity in the expected direction.
+HPS correlated with every variability measure; TEPS correlated with PA variability; CESD/STAI correlated with NA variability 
+
+```{r fig.height=10, fig.width=10}
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,
+                                  PA_mean,NA_mean))
+
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,
+                                  PA_se,PA_mssd,NA_se,NA_mssd))
+```
+
 
 ```{r}
-chart.Correlation(df_master %>% 
-                    dplyr::select(TEPS_ant_sum,TEPS_con_sum,HPS_sum,CESD_sum, STAI_TA_sum,STAI_SA_sum))
-```
-
-### We would expect some differentiation between PA and NA parameters; TEPS should be correlated with PA variability., and depression/anxiety should be correlated with NA variability. Motivated by this differentiability, we will now examine these specific links.
-
-```{r echo=FALSE}
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_mu_pos,TEPS_sum))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_pos,TEPS_sum))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_pos,TEPS_sum))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_mu_neg,TEPS_sum))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean5_vmu_neg,TEPS_sum))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,mean_s_neg,TEPS_sum))
-```
-
-### Here, we see that TEPS and HPS are differentially associated with the variability of EMA PA.
-```{r fig.width= 12,fig.height= 8}
-ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = muColor, color = muColor) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "TEPS",
-       x = "PA mu",
-       y = "TEPS total",
-       subtitle = "partial r = 0.318, p < .001")+
-ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA volatility",
-       y = "TEPS total",
-       subtitle = "partial r = 0.156, p = .004")+
-ggplot(df_master, aes(x = TEPS_sum, y = mean_s_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA noise",
-       y = "TEPS total",
-       subtitle = "partial r = -0.028, p = .608")+
-ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = muColor, color = muColor, linetype = "dashed", alpha = 0.1) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "NA mu",
-       y = "TEPS total",
-       subtitle = "partial r = -.201, p < .001")+
-ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "NA volatility",
-       y = "TEPS total",
-       subtitle = "partial r = -0.091, p = .093")+
-ggplot(df_master, aes(x = TEPS_sum, y = mean_s_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "NA noise",
-       y = "TEPS total",
-       subtitle = "partial r = -0.109, p = .045") + 
-ggplot(df_master, aes(x = HPS_sum, y = mean_mu_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "HPS",x = "PA mu",
-       y = "HPS total",
-       subtitle = "partial r = 0.095, p = .080")+ 
-ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA volatility",
-       y = "HPS total",
-       subtitle = "partial r = 0.064, p = .240")+
-ggplot(df_master, aes(x = HPS_sum, y = mean_s_pos))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "PA noise",
-       y = "HPS total",
-       subtitle = "partial r = 0.092, p = .091")+
-ggplot(df_master, aes(x = HPS_sum, y = mean_mu_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", fill = muColor, color = muColor, alpha = 0.1, linetype = "dashed",) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "NA mu",
-       y = "HPS total",
-       subtitle = "partial r = .284, p < .001")+
-ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed", alpha = 0.1) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "NA volatility",
-       y = "HPS total",
-       subtitle = "partial r = 0.118, p = .029")+
-ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "NA noise",
-       y = "HPS total",
-       subtitle = "partial r = 0.298, p < .001")+
-  plot_layout(nrow = 4)
-
-ggsave("./figures/figure_hpsteps.png",width = 7, height = 12)
-
-```
-
-
-
-<!-- ## 2.3 factor analysis of all baseline questionnaires to capture positive and negative affectivity -->
-<!-- ```{r} -->
-<!-- df_fa <- df_master %>% dplyr::select(CESD_sum, STAI_TA_sum,STAI_SA_sum) -->
-<!-- # df_fa <- df_master %>% dplyr::select(HPS_sum,TEPS_ant_sum,TEPS_con_sum,CESD_sum, STAI_TA_sum,STAI_SA_sum) -->
-<!-- # df_fa <- df_master %>% dplyr::select(CESD1:CESD20,HPS1:HPS24,,TEPS1:TEPS18,STAI_SA1:STAI_TA20) -->
-
-<!-- ev <- eigen(cor(na.omit(df_fa))) # get eigenvalues -->
-<!-- ap <- parallel(subject=nrow(df_fa),var=ncol(df_fa),rep=100,cent=.05) -->
-<!-- nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea) -->
-<!-- plotnScree(nS)# scree plot -->
-
-<!-- psych::fa(df_fa, nfactors = 1, -->
-<!--           rotate = "varimax", -->
-<!--           scores = "regression") -->
-
-<!-- df_master_ <- cbind(df_master, psych::fa(df_fa, nfactors = 1, -->
-<!--           rotate = "varimax", -->
-<!--           scores = "regression")$scores) %>%  -->
-<!--   rename(trait_NA = MR1) -->
-<!-- ``` -->
-
-<!-- ```{r} -->
-<!-- ggplot(df_master_, aes(x = trait_NA, y = TEPS_ant_sum))+ -->
-<!--   geom_point()+ -->
-<!--   geom_smooth(method = "lm") + -->
-<!--   stat_poly_eq(use_label(c("R2","p")), color= 'red')+ -->
-<!-- ggplot(df_master_, aes(x = trait_NA, y = TEPS_con_sum))+ -->
-<!--   geom_point()+ -->
-<!--   geom_smooth(method = "lm") + -->
-<!--   stat_poly_eq(use_label(c("R2","p")), color= 'red')+ -->
-<!-- ggplot(df_master_, aes(x = HPS_sum, y = trait_NA))+ -->
-<!--   geom_point()+ -->
-<!--   geom_smooth(method = "lm") + -->
-<!--   stat_poly_eq(use_label(c("R2","p")), color= 'red') -->
-
-<!-- summary(lm(trait_NA~TEPS_con_sum+TEPS_ant_sum, df_master_)) -->
-<!-- lm.beta::lm.beta(lm(trait_NA~TEPS_con_sum+TEPS_ant_sum, df_master_)) -->
-
-<!-- summary(lm(trait_NA~HPS_sum, df_master_)) -->
-<!-- lm.beta::lm.beta(lm(trait_NA~HPS_sum, df_master_)) -->
-
-<!-- summary(lm(TEPS_sum~HPS_sum, df_master_)) -->
-<!-- lm.beta::lm.beta(lm(TEPS_sum~HPS_sum, df_master_)) -->
-<!-- ``` -->
-
-```{r}
-df_corr <- df_master %>% 
-  dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,#trait_NA,
-                           PA_mean,PA_se,NA_mean,NA_se) %>% 
-  rename(TEPS = TEPS_sum, HPS = HPS_sum, CESD = CESD_sum,
-         `STAI-s` = STAI_SA_sum,`STAI-t` = STAI_TA_sum,
-         PA_sd = PA_se, NA_sd = NA_se)
+df_corr <- df_master_ema %>% 
+  dplyr::select(TEPS_sum,HPS_sum,CESD_sum,#STAI_SA_sum,STAI_TA_sum,#trait_NA,
+                           PA_mean,NA_mean,PA_se,PA_mssd,NA_se, NA_mssd) %>% 
+  rename(TEPS = TEPS_sum, HPS = HPS_sum, CESD = CESD_sum)
 
 chart.Correlation(df_corr)
 
@@ -221,32 +126,403 @@ p.mat <- cor_pmat(df_corr,
 knitr::kable(corm, digits = 3)
 knitr::kable(p.mat, digits = 3)
 
-ggcorrplot2::ggcorrplot.mixed(corm, 
-           p.mat = p.mat)
+ggcorrplot::ggcorrplot(corm, 
+           p.mat = p.mat, lab = T, insig = "blank", type = "lower",
+           colors = c("skyblue", "white", "orange"))
+
+ggsave("./figures/figure_corr.png",width = 8, height = 5)
+```
+
+
+Here, we see that the computational model reduced correlations among the variability measures
+```{r}
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(PA_se,PA_mssd,NA_se,NA_mssd))
+
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(mean5_vmu_pos,mean5_s_pos,mean5_vmu_neg,mean5_s_neg))
+```
+
+
+## 1.2 EMA bayes params and baseline questionnaires
+
+### Here, we see that TEPS and HPS are differentially associated with the variability of EMA PA.
+```{r}
+df_corr2 <- df_master_ema %>% 
+  dplyr::select(TEPS_sum,CESD_sum,HPS_sum,#STAI_SA_sum,STAI_TA_sum,#trait_NA,
+                            mean5_vmu_pos, mean5_s_pos, mean5_vmu_neg, mean5_s_neg) %>% 
+  rename(TEPS = TEPS_sum, HPS = HPS_sum, CESD = CESD_sum,
+         'PA volatility' = mean5_vmu_pos,
+         'NA volatility' = mean5_vmu_neg,
+         'PA noise' = mean5_s_pos,
+         'NA noise' = mean5_s_neg,)
+
+corm2 <- cor(df_corr2,
+            method = "pearson", use = "complete.obs")
+
+p.mat2 <- cor_pmat(df_corr2,
+            method = "pearson", use = "complete.obs")
+
+knitr::kable(corm2, digits = 3)
+knitr::kable(p.mat2, digits = 3)
+
+ggcorrplot::ggcorrplot(corm2, 
+           p.mat = p.mat2, lab = T, insig = "blank", type = "lower",
+           colors = c("skyblue", "white", "orange"))
 
 ggsave("./figures/figure_corr.png",width = 8, height = 5)
 ```
 
 ```{r}
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,PA_mean))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,PA_se))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,NA_mean))
-ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,NA_se))
+l1 <- lm(TEPS_sum ~ mean5_vmu_pos + mean5_s_pos + mean5_vmu_neg + mean5_s_neg,df_master_ema)
+l1b <- lm(scale(TEPS_sum) ~ scale(mean5_vmu_pos) + scale(mean5_s_pos) + scale(mean5_vmu_neg) + scale(mean5_s_neg),df_master_ema)
+summary(l1b)
+summary(lm(scale(TEPS_ant_sum) ~ scale(mean5_vmu_pos) + scale(mean5_s_pos) + scale(mean5_vmu_neg) + scale(mean5_s_neg),df_master_ema))
+summary(lm(scale(TEPS_con_sum) ~ scale(mean5_vmu_pos) + scale(mean5_s_pos) + scale(mean5_vmu_neg) + scale(mean5_s_neg),df_master_ema))
+
+l2 <- lm(HPS_sum ~ mean5_vmu_pos + mean5_s_pos + mean5_vmu_neg + mean5_s_neg,df_master_ema)
+l2b <- lm(scale(HPS_sum) ~ scale(mean5_vmu_pos) + scale(mean5_s_pos) + scale(mean5_vmu_neg) + scale(mean5_s_neg),df_master_ema)
+summary(l2b)
+
+summary(lm(scale(HPS_sum) ~ scale(mean5_vmu_pos) + scale(mean5_s_pos),df_master_ema))
+summary(lm(scale(HPS_sum) ~ scale(mean5_vmu_pos),df_master_ema))
+summary(lm(scale(HPS_sum) ~ scale(mean5_s_pos),df_master_ema))
+summary(lm(scale(HPS_sum) ~ scale(mean5_vmu_neg) + scale(mean5_s_neg),df_master_ema))
+
+l3 <- lm(CESD_sum ~ mean5_vmu_pos + mean5_s_pos + mean5_vmu_neg + mean5_s_neg,df_master_ema)
+l3b <- lm(scale(CESD_sum) ~ scale(mean5_vmu_pos) + scale(mean5_s_pos) + scale(mean5_vmu_neg) + scale(mean5_s_neg),df_master_ema)
+summary(l3b)
+
+summary(lm(mean5_s_neg ~ CESD_sum + HPS_sum,df_master_ema))
+
+(plot_model(l1, type = "pred", terms = "mean5_vmu_pos", show.data = T,
+           dot.size = 0.5, color = vmuColor)+
+  labs(x = "PA volatility", y = "TEPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l1b)$coefficients[2,1],2),
+                      ", p = ", round(summary(l1b)$coefficients[2,4],3))))+
+(plot_model(l1, type = "pred", terms = "mean5_s_pos", show.data = T,
+           dot.size = 0.5, color = noiseColor, alpha = 0.1)+
+  labs(x = "PA noise", y = "TEPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l1b)$coefficients[3,1],2),
+                      ", p = ", round(summary(l1b)$coefficients[3,4],3))))+
+plot_model(l1, type = "pred", terms = "mean5_vmu_neg", show.data = T,
+           dot.size = 0.5, color = vmuColor)+
+  labs(x = "NA volatility", y = "TEPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l1b)$coefficients[4,1],2),
+                      ", p = ", round(summary(l1b)$coefficients[4,4],3)))+
+plot_model(l1, type = "pred", terms = "mean5_s_neg", show.data = T,
+           dot.size = 0.5, color = noiseColor)+
+  labs(x = "NA noise", y = "TEPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l1b)$coefficients[5,1],2),
+                      ", p = ", round(summary(l1b)$coefficients[5,4],3)))+
+  
+plot_model(l2, type = "pred", terms = "mean5_vmu_pos", show.data = T,
+           dot.size = 0.5, color = vmuColor)+
+  labs(x = "PA volatility", y = "HPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l2b)$coefficients[2,1],2),
+                      ", p = ", round(summary(l2b)$coefficients[2,4],3)))+
+plot_model(l2, type = "pred", terms = "mean5_s_pos", show.data = T,
+           dot.size = 0.5, color = noiseColor)+
+  labs(x = "PA noise", y = "HPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l2b)$coefficients[3,1],2),
+                      ", p = ", round(summary(l2b)$coefficients[3,4],3)))+
+plot_model(l2, type = "pred", terms = "mean5_vmu_neg", show.data = T,
+           dot.size = 0.5, color = vmuColor)+
+  labs(x = "NA volatility", y = "HPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l2b)$coefficients[4,1],2),
+                      ", p = ", round(summary(l2b)$coefficients[4,4],3)))+
+plot_model(l2, type = "pred", terms = "mean5_s_neg", show.data = T,
+           dot.size = 0.5, color = noiseColor)+
+  labs(x = "NA noise", y = "HPS score",title = "",
+       subtitle = paste0("r = ", round(summary(l2b)$coefficients[5,1],2),
+                      ", p = ", round(summary(l2b)$coefficients[5,4],3)))+
+  
+plot_model(l3, type = "pred", terms = "mean5_vmu_pos", show.data = T,
+           dot.size = 0.5, color = vmuColor)+
+  labs(x = "PA volatility", y = "CESD score",title = "",
+       subtitle = paste0("r = ", round(summary(l3b)$coefficients[2,1],2),
+                      ", p = ", round(summary(l3b)$coefficients[2,4],3)))+
+plot_model(l3, type = "pred", terms = "mean5_s_pos", show.data = T,
+           dot.size = 0.5, color = noiseColor)+
+  labs(x = "PA noise", y = "CESD score",title = "",
+       subtitle = paste0("r = ", round(summary(l1b)$coefficients[3,1],2),
+                      ", p = ", round(summary(l1b)$coefficients[3,4],3)))+
+plot_model(l3, type = "pred", terms = "mean5_vmu_neg", show.data = T,
+           dot.size = 0.5, color = vmuColor)+
+  labs(x = "NA volatility", y = "CESD score",title = "",
+       subtitle = paste0("r = ", round(summary(l3b)$coefficients[4,1],2),
+                      ", p = ", round(summary(l3b)$coefficients[4,4],3)))+
+plot_model(l3, type = "pred", terms = "mean5_s_neg", show.data = T,
+           dot.size = 0.5, color = noiseColor)+
+  labs(x = "NA noise", y = "CESD score",title = "",
+       subtitle = paste0("r = ", round(summary(l3b)$coefficients[5,1],2),
+                      ", p = ", round(summary(l3b)$coefficients[5,4],3)))+
+  plot_layout(nrow = 3)
+ggsave("./figures/figure_hpsteps1.png",width = 7, height = 7)
+```
+
+```{r}
+bars <- Reduce(rbind,
+       list(as.data.frame(summary(l1b)$coefficients) %>% 
+              mutate(reg = "TEPS score"),
+            as.data.frame(summary(l2b)$coefficients) %>% 
+              mutate(reg = "HPS score"),
+            as.data.frame(summary(l3b)$coefficients) %>% 
+              mutate(reg = "CESD score"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars$valence[grepl("pos",bars$variable)] <- "Positive"
+bars$valence[grepl("neg",bars$variable)] <- "Negative"
+
+bars$variable[grepl("vmu",bars$variable)] <- "volatility"
+bars$variable[grepl("_s_",bars$variable)] <- "noise"
+
+bars <- bars %>% 
+  rowwise() %>% 
+  mutate(alpha = ifelse(grepl("\\*\\*", sig), "1",
+                        "0"))
+
+p1a <-  ggplot(bars %>% 
+         filter(!grepl("Intercept", variable),
+                reg == "TEPS score") %>% 
+         mutate(variable = factor(variable, levels = c("volatility", "noise")),
+                valence = factor(valence, levels = c("Positive", "Negative")),
+                reg = factor(reg, levels = c("TEPS score", "HPS score", "CESD score")))) +
+  geom_col(aes(x = valence, y = Estimate, group = variable, fill = variable, alpha = alpha),
+           width = 0.4, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(x = valence, ymin = Estimate - se, ymax = Estimate + se, group = variable),
+                width = 0.1, position = position_dodge(width = 0.5)) +
+  geom_text(aes(x = valence, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.1), 
+                label = sig, group = variable), 
+            position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none") +
+  scale_fill_manual(values = c(vmuColor, noiseColor)) +
+  labs(y = "Standardized \u03b2",
+       title = "TEPS score ~ ESM variability",
+       x = "")+
+    ylim(-0.3,0.5)+
+  theme(legend.position = "none")
+  
+p1b <-  ggplot(bars %>% 
+         filter(!grepl("Intercept", variable),
+                reg == "HPS score") %>% 
+         mutate(variable = factor(variable, levels = c("volatility", "noise")),
+                valence = factor(valence, levels = c("Positive", "Negative")),
+                reg = factor(reg, levels = c("TEPS score", "HPS score", "CESD score")))) +
+  geom_col(aes(x = valence, y = Estimate, group = variable, fill = variable, alpha = alpha),
+           width = 0.4, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(x = valence, ymin = Estimate - se, ymax = Estimate + se, group = variable),
+                width = 0.1, position = position_dodge(width = 0.5)) +
+  geom_text(aes(x = valence, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.1), 
+                label = sig, group = variable), 
+            position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none") +
+  scale_fill_manual(values = c(vmuColor, noiseColor)) +
+  labs(y = "Standardized \u03b2",
+       title = "HPS score ~ ESM variability",
+       x = "")+
+    ylim(-0.3,0.5)+
+  theme(legend.position = "none")
+  
+p1c <-ggplot(bars %>% 
+         filter(!grepl("Intercept", variable),
+                reg == "CESD score") %>% 
+         mutate(variable = factor(variable, levels = c("volatility", "noise")),
+                valence = factor(valence, levels = c("Positive", "Negative")),
+                reg = factor(reg, levels = c("TEPS score", "HPS score", "CESD score")))) +
+  geom_col(aes(x = valence, y = Estimate, group = variable, fill = variable, alpha = alpha),
+           width = 0.4, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(x = valence, ymin = Estimate - se, ymax = Estimate + se, group = variable),
+                width = 0.1, position = position_dodge(width = 0.5)) +
+  geom_text(aes(x = valence, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.1), 
+                label = sig, group = variable), 
+            position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none") +
+  scale_fill_manual(values = c(vmuColor, noiseColor)) +
+  labs(y = "Standardized \u03b2",
+       title = "CESD score ~ ESM variability",
+       x = "")+
+    ylim(-0.3,0.5)+
+  theme(legend.position = "bottom")
+
+
+```
+
+```{r}
+l1c <- lm(scale(TEPS_sum) ~ scale(mean_mu_pos) + scale(mean_mu_neg),df_master_ema)
+
+l2c <- lm(scale(HPS_sum) ~ scale(mean_mu_pos) + scale(mean_mu_neg),df_master_ema)
+
+l3c <- lm(scale(CESD_sum) ~ scale(mean_mu_pos) + scale(mean_mu_neg),df_master_ema)
+
+bars2 <- Reduce(rbind,
+       list(as.data.frame(summary(l1c)$coefficients) %>% 
+              mutate(reg = "TEPS score"),
+            as.data.frame(summary(l2c)$coefficients) %>% 
+              mutate(reg = "HPS score"),
+            as.data.frame(summary(l3c)$coefficients) %>% 
+              mutate(reg = "CESD score"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars2$valence[grepl("pos",bars2$variable)] <- "Positive"
+bars2$valence[grepl("neg",bars2$variable)] <- "Negative"
+
+bars2$variable[grepl("mu",bars2$variable)] <- "mean"
+
+bars2 <- bars2 %>% 
+  rowwise() %>% 
+  mutate(alpha = ifelse(grepl("\\*\\*", sig), "1","0"))
+
+p2 <- ggplot(bars2 %>% 
+         filter(!grepl("Intercept", variable)) %>% 
+         mutate(variable = factor(variable, levels = c("volatility", "noise")),
+                valence = factor(valence, levels = c("Positive", "Negative")),
+                reg = factor(reg, levels = c("TEPS score", "HPS score", "CESD score")))) +
+  geom_col(aes(x = valence, y = Estimate, group = valence, fill = valence, alpha = alpha),
+           width = 0.4, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(x = valence, ymin = Estimate - se, ymax = Estimate + se, group = valence),
+                width = 0.1, position = position_dodge(width = 0.5)) +
+  geom_text(aes(x = valence, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.1), 
+                label = sig, group = valence), 
+            position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none") +
+  scale_fill_manual(values = c('orange', 'skyblue')) +
+  labs(y = "Standardized \u03b2",
+       title = "self-reports ~ ESM mean",
+       x = "")+
+  theme(legend.position = "none")+
+  facet_wrap(~reg,nrow = 3)+
+  ylim(-0.5,0.7)
+
+```
+
+<!-- ```{r} -->
+<!-- design <- " -->
+<!-- 11 -->
+<!-- 25  -->
+<!-- 35  -->
+<!-- 45 -->
+<!-- " -->
+
+<!-- png("figures/temp.png", width = 533, height = 373) -->
+<!-- corrplot::corrplot(as.matrix(corm2[1:3,4:7]),p.mat = p.mat2[1:3,4:7], -->
+<!--                    tl.col = "black",method = "square",cl.align.text = "r",addCoef.col = T, -->
+<!--                   tl.srt = 0, tl.offset = 5,win.asp = 0.7) #this is not a ggplot object  -->
+<!-- dev.off() -->
+
+<!-- p0<-magick::image_read("figures/temp.png") -->
+
+<!-- p0_raster <- as.raster(p0) -->
+
+<!-- p0<- cowplot::ggdraw() + -->
+<!--   cowplot::draw_image(p0_raster, scale = 1) -->
+
+<!-- p0+ -->
+<!-- p1a+p1b+p1c+p2+ -->
+<!--   plot_layout(design = design, -->
+<!--               widths = c(2,1), -->
+<!--               height = c(3,1,1,1))+ -->
+<!--   plot_annotation(tag_levels = "A") -->
+<!-- ggsave("./figures/figure_hpsteps.png",width = 7, height = 10) -->
+<!-- ``` -->
+
+
+```{r}
+design <- "
+14
+24 
+34
+"
+
+p1a+p1b+p1c+p2+
+  plot_layout(design = design,
+              widths = c(2,1))+
+  plot_annotation(tag_levels = "A")
+ggsave("./figures/figure_hpsteps.png",width = 7, height = 7)
+```
+#### the TEPS thing 
+```{r}
+ppcor::pcor(df_master_ema %>% dplyr::select(TEPS_sum,PA_se,PA_mean,mean5_vmu_pos,mean5_s_pos) %>% 
+              drop_na())
+```
+
+#### why the divergent results for HPS?
+
+```{r}
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(PA_mean,NA_mean
+                                  ,PA_se,PA_mssd,NA_se,NA_mssd))
+
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(mean_mu_pos,mean5_vmu_pos,mean5_s_pos))
+
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(PA_se,PA_mssd,mean5_vmu_pos,mean5_s_pos,HPS_sum))
+
+cor(df_master_ema%>% 
+                    dplyr::select(PA_mean,PA_se,PA_mssd,mean5_vmu_pos,mean5_s_pos),
+            method = "pearson", use = "complete.obs")
+
+cor_pmat(df_master_ema%>% 
+                    dplyr::select(PA_mean,PA_se,PA_mssd,mean5_vmu_pos,mean5_s_pos),
+            method = "pearson", use = "complete.obs")
+
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,PA_se,PA_mean))
+
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,PA_mssd,PA_mean))
+```
+
+
+```{r echo=FALSE}
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,mean_mu_pos,TEPS_sum) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,mean5_vmu_pos,TEPS_sum) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,mean_s_pos,TEPS_sum) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,mean_mu_neg,TEPS_sum) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,mean5_vmu_neg,TEPS_sum) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,mean_s_neg,TEPS_sum) %>% drop_na())
+```
+
+
+```{r}
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,PA_mean) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,PA_se) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,NA_mean) %>% drop_na())
+ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,NA_se) %>% drop_na())
 ```
 
 
 ### Similar to what we found in 2.2, trait NA is associated with higher NA but not variability.
 ```{r echo=FALSE}
-c1 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_mu_pos))
-c2 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean5_vmu_pos))
-c3 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_s_pos))
-c4 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_mu_neg))
-c5 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean5_vmu_neg))
-c6 <- ppcor::pcor(df_master %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_s_neg))
+c1 <- ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_mu_pos) %>% 
+                    drop_na())
+c2 <- ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean5_vmu_pos) %>% 
+                    drop_na())
+c3 <- ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_s_pos) %>% 
+                    drop_na())
+c4 <- ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_mu_neg) %>% 
+                    drop_na())
+c5 <- ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean5_vmu_neg) %>% 
+                    drop_na())
+c6 <- ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI_SA_sum,STAI_TA_sum,mean_s_neg) %>% 
+                    drop_na())
 ```
 
 ```{r fig.width= 12,fig.height= 8}
-ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_pos))+
+ggplot(df_master_ema, aes(x = TEPS_sum, y = mean_mu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = muColor, color = muColor) +
   stat_poly_eq(use_label(c("R2","p")))+
@@ -254,140 +530,54 @@ ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_pos))+
        x = "PA mu",
        y = "TEPS total",
        subtitle = paste0("partial r = ", round(c1$estimate[2,4],2),", p = ",round(c4$p.value[2,4],2)))+
-# ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA volatility",
-#        y = "TEPS total",
-#        subtitle = paste0("partial r = ", round(c2$estimate[2,4],2),", p = .003"))+
-# ggplot(df_master, aes(x = TEPS_sum, y = mean_s_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA noise",
-#        y = "TEPS total",
-#        subtitle = paste0("partial r = ", round(c3$estimate[2,4],2),", p = .725"))+
-ggplot(df_master, aes(x = TEPS_sum, y = mean_mu_neg))+
+
+ggplot(df_master_ema, aes(x = TEPS_sum, y = mean_mu_neg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = muColor, color = muColor, linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "NA mu",
        y = "TEPS total",
         subtitle = paste0("partial r = ", round(c4$estimate[2,4],2),", p = .114"))+
-# ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA volatility",
-#        y = "TEPS total",
-#        subtitle = paste0("partial r = ", round(c5$estimate[2,4],2),", p = .732"))+
-# ggplot(df_master, aes(x = TEPS_sum, y = mean_s_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA noise",
-#        y = "TEPS total",
-#        subtitle = paste0("partial r = ", round(c6$estimate[2,4],2),", p = .717"))+
-ggplot(df_master, aes(x = HPS_sum, y = mean_mu_pos))+
+
+ggplot(df_master_ema, aes(x = HPS_sum, y = mean_mu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = muColor, color = muColor) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(title = "HPS",x = "PA mu",
        y = "HPS total",
        subtitle = paste0("partial r = ", round(c1$estimate[1,4],2),", p < .001"))+
-# ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA volatility",
-#        y = "HPS total",
-# subtitle = paste0("partial r = ", round(c2$estimate[1,4],2),", p = .354"))+
-# ggplot(df_master, aes(x = HPS_sum, y = mean_s_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA noise",
-#        y = "HPS total",
-# subtitle = paste0("partial r = ", round(c3$estimate[1,4],2),", p = .133"))+
-ggplot(df_master, aes(x = HPS_sum, y = mean_mu_neg))+
+
+ggplot(df_master_ema, aes(x = HPS_sum, y = mean_mu_neg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = muColor, color = muColor, alpha = 0.1, linetype = "dashed",) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "NA mu",
        y = "HPS total",
         subtitle = paste0("partial r = ", round(c4$estimate[1,4],2),", p < .001"))+
-# ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", color = 'grey', fill = 'grey', linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA volatility",
-#        y = "HPS total",
-#         subtitle = paste0("partial r = ", round(c5$estimate[1,4],2),", p = .338"))+
-# ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA noise",
-#        y = "HPS total",
-#        subtitle = paste0("partial r = ", round(c6$estimate[1,4],2),", p < .001"))+
-ggplot(df_master, aes(y = trait_NA, x = mean_mu_pos))+
+
+ggplot(df_master_ema, aes(y = CESD_sum, x = mean_mu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = muColor, color = muColor) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(title = "Trait NA",
        x = "PA mu",
-       y = "trait NA",
+       y = "CESD",
        subtitle = paste0("partial r = ", round(c1$estimate[3,4],2),", p < .001"))+
-# ggplot(df_master_, aes(y = trait_NA, x = mean5_vmu_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA volatility",
-#        y = "trait NA",
-#        subtitle = paste0("partial r = ", round(c2$estimate[3,4],2),", p = .416"))+
-# ggplot(df_master_, aes(y = trait_NA, x = mean_s_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA noise",
-#        y = "trait NA",
-#        subtitle = paste0("partial r = ", round(c3$estimate[3,4],2),", p = .616"))+
-ggplot(df_master, aes(y = trait_NA, x = mean_mu_neg))+
+
+ggplot(df_master_ema, aes(y = CESD_sum, x = mean_mu_neg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = muColor, color = muColor, linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "NA mu",
-       y = "trait NA",
+       y = "CESD",
        subtitle = paste0("partial r = ", round(c4$estimate[3,4],2),", p < .001"))+
-# ggplot(df_master_, aes(y = trait_NA, x = mean5_vmu_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA vmu",
-#        y = "trait NA",
-#        subtitle = paste0("partial r = ", round(c5$estimate[3,4],2),", p < .001"))+
-# ggplot(df_master_, aes(y = trait_NA, x = mean_s_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA noise",
-#        y = "trait NA",
-#        subtitle = paste0("partial r = ", round(c6$estimate[3,4],2),", p < .001"))+
-
 
   plot_layout(nrow = 1)
 
 ggsave("./figures/figure_hpsteps2.png",width = 12, height = 3)
 ```
-
-# Part 3 (SI): diurnal contributions to the EMA variability
-```{r warning=FALSE,message=FALSE}
-source(here::here("fit_diurnal_model.R"))
-```
-
 ```{r fig.width= 12,fig.height= 8}
-ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
+ggplot(df_master_ema, aes(x = TEPS_sum, y = mean5_vmu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = vmuColor, color = vmuColor) +
   stat_poly_eq(use_label(c("R2","p")))+
@@ -395,28 +585,28 @@ ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_pos))+
        y = "TEPS total",
        title = "TEPS",
        subtitle = paste0("partial r = ", round(c2$estimate[2,4],2),", p = .003"))+
-ggplot(df_master, aes(x = TEPS_sum, y = mean_s_pos))+
+ggplot(df_master_ema, aes(x = TEPS_sum, y = mean_s_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "PA noise",
        y = "TEPS total",
        subtitle = paste0("partial r = ", round(c3$estimate[2,4],2),", p = .725"))+
-ggplot(df_master, aes(x = TEPS_sum, y = mean5_vmu_neg))+
+ggplot(df_master_ema, aes(x = TEPS_sum, y = mean5_vmu_neg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "NA volatility",
        y = "TEPS total",
        subtitle = paste0("partial r = ", round(c5$estimate[2,4],2),", p = .732"))+
-ggplot(df_master, aes(x = TEPS_sum, y = mean_s_neg))+
+ggplot(df_master_ema, aes(x = TEPS_sum, y = mean_s_neg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey', linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "NA noise",
        y = "TEPS total",
        subtitle = paste0("partial r = ", round(c6$estimate[2,4],2),", p = .717"))+
-ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
+ggplot(df_master_ema, aes(x = HPS_sum, y = mean5_vmu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
   stat_poly_eq(use_label(c("R2","p")))+
@@ -424,67 +614,42 @@ ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_pos))+
        title = "HPS",
        y = "HPS total",
 subtitle = paste0("partial r = ", round(c2$estimate[1,4],2),", p = .354"))+
-ggplot(df_master, aes(x = HPS_sum, y = mean_s_pos))+
+ggplot(df_master_ema, aes(x = HPS_sum, y = mean_s_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "PA noise",
        y = "HPS total",
 subtitle = paste0("partial r = ", round(c3$estimate[1,4],2),", p = .133"))+
-ggplot(df_master, aes(x = HPS_sum, y = mean5_vmu_neg))+
+ggplot(df_master_ema, aes(x = HPS_sum, y = mean5_vmu_neg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = 'grey', fill = 'grey', linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "NA volatility",
        y = "HPS total",
         subtitle = paste0("partial r = ", round(c5$estimate[1,4],2),", p = .338"))+
-ggplot(df_master, aes(x = HPS_sum, y = mean_s_neg))+
+ggplot(df_master_ema, aes(x = HPS_sum, y = mean_s_neg))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
   stat_poly_eq(use_label(c("R2","p")))+
   labs(x = "NA noise",
        y = "HPS total",
        subtitle = paste0("partial r = ", round(c6$estimate[1,4],2),", p < .001"))+
-# ggplot(df_master, aes(y = CESD_sum, x = mean5_vmu_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA volatility",
-#        y = "trait NA",
-#        title = "Trait NA",
-#        subtitle = paste0("partial r = ", round(c2$estimate[3,4],2),", p = .416"))+
-# ggplot(df_master, aes(y = CESD_sum, x = mean_s_pos))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", fill = 'grey', color = 'grey') +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "PA noise",
-#        y = "trait NA",
-#        subtitle = paste0("partial r = ", round(c3$estimate[3,4],2),", p = .616"))+
-# ggplot(df_master, aes(y = CESD_sum, x = mean5_vmu_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor, linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA vmu",
-#        y = "trait NA",
-#        subtitle = paste0("partial r = ", round(c5$estimate[3,4],2),", p < .001"))+
-# ggplot(df_master, aes(y = CESD_sum, x = mean_s_neg))+
-#   geom_point(size = 0.5)+
-#   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor, linetype = "dashed", alpha = 0.1) +
-#   stat_poly_eq(use_label(c("R2","p")))+
-#   labs(x = "NA noise",
-#        y = "trait NA",
-#        subtitle = paste0("partial r = ", round(c6$estimate[3,4],2),", p < .001"))+
-# 
 
   plot_layout(nrow = 2)
 
 ggsave("./figures/figure_hpsteps3.png",width = 8, height = 6)
 ```
+
+# Part 3 (SI?): diurnal contributions to the EMA variability
+
+
+
 ## 3.1 plot example diurnal fit
 ### PA: Across subjects, the quadratic term is negative and linear term is positive.
 
 ```{r}
-lm_diurn_pa <- lmer(PA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index/Prolific.Id),data=df_PANAS_forlm)
+lm_diurn_pa <- lmer(PA_sum_scaled ~ I(time_index^2) + time_index +(1|Prolific.Id),data=df_PANAS_forlm)
 
 summary(lm_diurn_pa)
 
@@ -492,20 +657,13 @@ df_PANAS_forlm1 <- df_PANAS_forlm %>%
   filter(!is.na(PA_sum_scaled)) 
 df_PANAS_forlm1$PA_pred_val = fitted(lm_diurn_pa)
 
-ggplot(data=df_PANAS_forlm1)+
-    theme_classic()+
-    stat_summary(aes(x=time_index, y=PA_pred_val,group = Prolific.Id), 
-                 geom = "line", alpha = 0.1)+
-  stat_summary(aes(x=time_index, y=PA_pred_val,group = 1), 
-                 geom = "pointrange", color = "red", size = 0.5)+
-    labs(title = 'Diurnal Variation Model prediction - PA',
-         y = 'predicted scaled PA', x = 'time of day')+
-   scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"))
+lm_diurn_pa_pred <- ggeffects::ggpredict(lm_diurn_pa, terms = c("time_index[1,2,3,4,5,6]"))
+
 ```
 ### NA: Across subjects, there is no significant diurnal effect.
 
 ```{r}
-lm_diurn_na <- lmer(NA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index/Prolific.Id),data=df_PANAS_forlm)
+lm_diurn_na <- lmer(NA_sum_scaled ~ I(time_index^2) + time_index +(1|Prolific.Id),data=df_PANAS_forlm)
 
 summary(lm_diurn_na)
 
@@ -513,106 +671,267 @@ df_PANAS_forlm2 <- df_PANAS_forlm %>%
   filter(!is.na(NA_sum_scaled)) 
 df_PANAS_forlm2$NA_pred_val = fitted(lm_diurn_na)
 
-ggplot(data=df_PANAS_forlm2)+
+lm_diurn_na_pred <- ggeffects::ggpredict(lm_diurn_na, terms = c("time_index[1,2,3,4,5,6]"))
+
+pda <- 
+  
+ggplot()+
+  geom_line(data=lm_diurn_pa_pred, aes(x = x, y = predicted),linewidth = 1, color = "orange")+
+  geom_ribbon(data=lm_diurn_pa_pred,aes(x = x, ymin = conf.low, ymax = conf.high),linewidth = 1, fill = "orange",
+              alpha = 0.2)+
+    geom_line(data=lm_diurn_na_pred, aes(x = x, y = predicted),linewidth = 1, color = "skyblue")+
+  geom_ribbon(data=lm_diurn_na_pred,aes(x = x, ymin = conf.low, ymax = conf.high),linewidth = 1, fill = "skyblue",
+              alpha = 0.2)+
+    labs(title = 'Diurnal Variation Model fit',
+         y = 'predicted standardized affect', x = 'time of day')+
+   scale_x_continuous(breaks = 1:6,labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"),
+                     guide = guide_axis(angle = 45))+
     theme_classic()+
-    stat_summary(aes(x=time_index, y=NA_pred_val,group = Prolific.Id), 
-                 geom = "line", alpha = 0.1)+
-  stat_summary(aes(x=time_index, y=NA_pred_val,group = 1), 
-                 geom = "pointrange", color = "red", size = 0.5)+
-    labs(title = 'Diurnal Variation Model prediction - NA',
-         y = 'predicted scaled NA', x = 'time of day')+
-   scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"))
+  annotate("text", x = min(lm_diurn_pa_pred$x)+1, y = lm_diurn_pa_pred$predicted[1], label = "PosAff", color = "orange", vjust = 0.5) +
+  annotate("text", x = min(lm_diurn_na_pred$x)+1, y = lm_diurn_na_pred$predicted[1], label = "NegAff", color = "skyblue",  vjust = -2.5)
 ```
 ```{r}
-df_lm_sum <- read_csv(paste(outdir, 'panas_lm_params.csv'))
+pd2 <- ggplot(df_master_ema %>% 
+         dplyr::select(`t^2_Estimate_PA`,`t^2_Estimate_NA`,`t_Estimate_PA`,`t_Estimate_NA`) %>% 
+           pivot_longer(`t^2_Estimate_PA`:`t_Estimate_NA`,names_to = c("parameter","affect"),
+                        names_pattern = "(.*)_Estimate_(.*)") %>% 
+         mutate(affect = ifelse(affect == "PA","PosAff","NegAff"),
+                parameter = ifelse(parameter == "t^2","quadratic term","linear term"),
+                parameter = factor(parameter, levels = c("quadratic term","linear term"))), 
+       aes(x = affect, y = value, group = interaction(parameter, affect))) +
+  facet_wrap(~parameter, scales = "free_y")+
+  geom_violin(aes(color = affect), alpha = 0.5) +
+  geom_jitter(aes(color = affect), size = 0.1, alpha = 0.5) +
+  stat_summary(geom = "pointrange", fun.data = mean_cl_normal, position = position_dodge(0.9),
+               size = 0.2) +
+  scale_color_manual(values = c("PosAff" = "orange", "NegAff" = "skyblue")) +
+  scale_fill_manual(values = c("PosAff" = "orange", "NegAff" = "skyblue")) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  theme_classic() +
+  theme(legend.position = "none")+
+  labs(x = "",
+       y = "parameter value")
 
-df_master <- left_join(df_master, df_lm_sum %>% 
-  dplyr::select(Prolific.Id,model,Intercept_Estimate:t_Estimate,R2c) %>% 
-  pivot_wider(names_from = model, values_from = c(Intercept_Estimate:R2c)))
+t.test(df_master_ema$`t^2_Estimate_PA`, mu = 0)
+t.test(df_master_ema$`t^2_Estimate_NA`, mu = 0)
 
+# pd3 <- ggplot(df_master_ema %>% 
+#          dplyr::select(`t_Estimate_PA`,`t_Estimate_NA`) %>% 
+#          rename(PosAff = `t_Estimate_PA`,
+#                 NegAff = `t_Estimate_NA`) %>% 
+#          pivot_longer(PosAff:NegAff,
+#                       names_to = "Affect", values_to = "lin_term"), aes(x = Affect, y = lin_term))+
+#   geom_violin(aes(color = Affect))+
+#   geom_jitter(width = 0.3,size=0.1)+
+#   stat_summary(aes(color = Affect),geom = "pointrange")+
+#   scale_color_manual(values = c("skyblue","orange"))+
+#   geom_hline(yintercept = 0, linetype = "dotted")+
+#   theme(legend.position = "none")
 
-ggplot(df_master %>% 
-         dplyr::select(`t^2_Estimate_PA`,`t^2_Estimate_NA`) %>% 
-         rename(PosAff = `t^2_Estimate_PA`,
-                NegAff = `t^2_Estimate_NA`) %>% 
-         pivot_longer(PosAff:NegAff,
-                      names_to = "Affect", values_to = "quad_term"), aes(x = Affect, y = quad_term))+
-  geom_violin(aes(color = Affect))+
-  geom_jitter(width = 0.3, size = 0.4)+
-  stat_summary(aes(color = Affect),geom = "pointrange")+
-  scale_color_brewer(palette = "Set1")+
-  geom_hline(yintercept = 0, linetype = "dotted")
-
-t.test(df_master$`t^2_Estimate_PA`, mu = 0)
-t.test(df_master$`t^2_Estimate_NA`, mu = 0)
-
-ggplot(df_master %>% 
-         dplyr::select(`t_Estimate_PA`,`t_Estimate_NA`) %>% 
-         rename(PosAff = `t_Estimate_PA`,
-                NegAff = `t_Estimate_NA`) %>% 
-         pivot_longer(PosAff:NegAff,
-                      names_to = "Affect", values_to = "lin_term"), aes(x = Affect, y = lin_term))+
-  geom_violin(aes(color = Affect))+
-  geom_jitter(width = 0.3,size=0.4)+
-  stat_summary(aes(color = Affect),geom = "pointrange")+
-  scale_color_brewer(palette = "Set1")+
-  geom_hline(yintercept = 0, linetype = "dotted")
-
-t.test(df_master$`t_Estimate_PA`, mu = 0)
-t.test(df_master$`t_Estimate_NA`, mu = 0)
+t.test(df_master_ema$`t_Estimate_PA`, mu = 0)
+t.test(df_master_ema$`t_Estimate_NA`, mu = 0)
 ```
 
 ## 3.2 demonstrate that diurnal variation of PA contributes to noise, but not volatility
+```{r}
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(PA_mean,PA_se,PA_mssd,mean5_vmu_pos,mean5_s_pos,
+                                  `t_Estimate_PA`,`t^2_Estimate_PA`,R2c_PA) %>% 
+                    rename(t2 = `t^2_Estimate_PA`,
+                           t = `t_Estimate_PA`))
 
-```{r fig.width= 12,fig.height= 8}
-ggplot(df_master, aes(x = mean5_vmu_pos, y = `t^2_Estimate_PA`))+
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(NA_mean,NA_se,NA_mssd,mean5_vmu_neg,mean5_s_neg,
+                                  `t_Estimate_NA`,`t^2_Estimate_NA`,R2c_NA) %>% 
+                    rename(t2 = `t^2_Estimate_NA`,
+                           t = `t_Estimate_NA`))
+
+summary(lm(scale(PA_se) ~ scale(`t^2_Estimate_PA`) + scale(`t_Estimate_PA`),df_master_ema))
+summary(lm(scale(PA_mssd) ~ scale(`t^2_Estimate_PA`) + scale(`t_Estimate_PA`),df_master_ema))
+summary(lm(scale(PA_se) ~ scale(R2c_PA),df_master_ema))
+summary(lm(scale(PA_mssd) ~ scale(R2c_PA),df_master_ema))
+```
+
+```{r}
+ps <- ggplot(df_master_ema, aes(x = mean5_vmu_pos, y = `t^2_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
   geom_hline(yintercept = 0, linetype = "dashed")+
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "Quadratic term (negative)",
-       x = "log PA volatility",
+  stat_poly_eq(use_label(c("R2","p")),color = vmuColor)+
+  labs(title = "Quadratic term",
+       x = "PA volatility",
        y = "quadratic term")+
-ggplot(df_master, aes(x = mean_s_pos, y = `t^2_Estimate_PA`))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
-  geom_hline(yintercept = 0, linetype = "dashed")+
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "log PA noise",
-       y = "quadratic term")+
-ggplot(df_master, aes(x = mean_mu_pos, y = `t^2_Estimate_PA`))+
-  geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = "grey", fill = "grey") +
-  geom_hline(yintercept = 0, linetype = "dashed")+
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "log PA mu",
-       y = "quadratic term")+
-
-ggplot(df_master, aes(x = mean5_vmu_pos, y = `t_Estimate_PA`))+
+  
+  ggplot(df_master_ema, aes(x = mean5_vmu_pos, y = `t_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
   geom_hline(yintercept = 0, linetype = "dashed")+
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(title = "Linear term (positive)",
-       x = "log PA volatility",
+  stat_poly_eq(use_label(c("R2","p")),color = vmuColor)+
+  labs(title = "Linear term",
+       x = "PA volatility",
        y = "linear term")+
-ggplot(df_master, aes(x = mean_s_pos, y = `t_Estimate_PA`))+
+  
+  ggplot(df_master_ema, aes(x = mean5_vmu_pos, y = log(R2c_PA)))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")),color = vmuColor)+
+  labs(title = "R2",
+       x = "PA volatility",
+       y = "log R2")+
+  
+ggplot(df_master_ema, aes(x = mean_s_pos, y = `t^2_Estimate_PA`))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
   geom_hline(yintercept = 0, linetype = "dashed")+
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "log PA noise",
-       y = "linear term")+
-ggplot(df_master, aes(x = mean_mu_pos, y = `t_Estimate_PA`))+
+  stat_poly_eq(use_label(c("R2","p")),color = noiseColor)+
+  labs(x = "PA noise",
+       y = "quadratic term")+
+
+
+ggplot(df_master_ema, aes(x = mean_s_pos, y = `t_Estimate_PA`))+
   geom_point(size = 0.5)+
-  geom_smooth(method = "lm", color = "grey", fill = "grey") +
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
   geom_hline(yintercept = 0, linetype = "dashed")+
-  stat_poly_eq(use_label(c("R2","p")))+
-  labs(x = "log PA mu",
-       y = "linear term")
+  stat_poly_eq(use_label(c("R2","p")),color = noiseColor)+
+  labs(x = "PA noise",
+       y = "linear term") +
+  
+
+ggplot(df_master_ema, aes(x = mean_s_pos, y = log(R2c_PA)))+
+  geom_point(size = 0.5)+
+  geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  stat_poly_eq(use_label(c("R2","p")),color = noiseColor)+
+  labs(x = "PA noise",
+       y = "log R2")
 ```
 ```{r}
-summary(lm(`t^2_Estimate_PA`~ mean5_vmu_pos + mean_s_pos,df_master))
-summary(lm(`t_Estimate_PA`~ mean5_vmu_pos + mean_s_pos,df_master))
+summary(df_master_ema$mean5_vmu_pos)
+summary(df_master_ema$mean5_s_pos)
+
+l3 <- lm(scale(`t^2_Estimate_PA`)~ scale(mean5_vmu_pos) + scale(mean_s_pos),df_master_ema)
+
+l4 <- lm(scale(`t_Estimate_PA`)~ scale(mean5_vmu_pos) + scale(mean_s_pos),df_master_ema)
+
+l5 <- lm(scale(R2c_PA) ~ scale(mean5_vmu_pos) + scale(mean_s_pos),df_master_ema)
+
+summary(lm(scale(R2c_NA) ~ scale(mean5_vmu_neg) + scale(mean_s_neg),df_master_ema))
+
+
+bars3 <- Reduce(rbind,
+       list(as.data.frame(summary(l3)$coefficients) %>% 
+              mutate(reg = "quadratic term"),
+            as.data.frame(summary(l4)$coefficients) %>% 
+              mutate(reg = "linear term"),
+            as.data.frame(summary(l5)$coefficients) %>% 
+              mutate(reg = "R2"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars3$variable[grepl("vmu",bars3$variable)] <- "volatility"
+bars3$variable[grepl("_s_",bars3$variable)] <- "noise"
+
+bars3 <- bars3 %>% 
+  rowwise() %>% 
+  mutate(alpha = ifelse(grepl("\\*", sig), "1","0"))
+
+pd1 <- ggplot(bars3 %>% 
+         filter(!grepl("Intercept", variable)) %>% 
+         mutate(variable = factor(variable, levels = c("volatility", "noise")),
+                reg = factor(reg, levels = c("quadratic term", "linear term", "R2")))) +
+  geom_col(aes(x = reg, y = Estimate, group = variable, fill = variable, alpha = alpha),
+           width = 0.4, position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(x = reg, ymin = Estimate - se, ymax = Estimate + se, group = variable),
+                width = 0.1, position = position_dodge(width = 0.5)) +
+  geom_text(aes(x = reg, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), 
+                label = sig, group = variable), 
+            position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none") +
+  scale_fill_manual(values = c(vmuColor, noiseColor)) +
+  labs(y = "Standardized \u03b2",
+       title = "diurnal model ~ PA variability",
+       x = "")+
+  theme(legend.position = "top")
+```
+
+```{r}
+l3b <- lm(`t^2_Estimate_PA` ~ mean5_vmu_pos + mean_s_pos,df_master_ema)
+l4b <- lm(`t_Estimate_PA` ~ mean5_vmu_pos + mean_s_pos,df_master_ema)
+
+mydf3 <- ggeffects::ggpredict(l3b, terms = c("mean5_vmu_pos[-3.9591,-2.1768]"))
+mydf4 <- ggeffects::ggpredict(l4b, terms = c("mean5_vmu_pos[-3.9591,-2.1768]"))
+
+x = 1:6
+y = mydf3$predicted[1]*x^2 + mydf4$predicted[1]*x
+yl = mydf3$conf.low[1]*x^2 + mydf4$conf.low[1]*x
+yh = mydf3$conf.high[1]*x^2 + mydf4$conf.high[1]*x
+d <- data.frame(x,y,yl,yh,level = "bottom 25%")
+
+y = mydf3$predicted[2]*x^2 + mydf4$predicted[2]*x
+yl = mydf3$conf.low[2]*x^2 + mydf4$conf.low[2]*x
+yh = mydf3$conf.high[2]*x^2 + mydf4$conf.high[2]*x
+d2 <- data.frame(x,y,yl,yh,level = "top 25%")
+
+d <- rbind(d,d2)
+# pv <- 
+pv <-  ggplot(data = d,aes(x = x, y = y, alpha = level))+
+  geom_line(linewidth = 1, color = vmuColor)+
+  ylim(0,1)+
+  scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"),
+                     guide = guide_axis(angle = 45))+
+  labs(y = "predicted PA (a.u.)",
+       x = "time",
+       title = "diurnal variation by volatility",
+       alpha = "volatility level")+
+  scale_alpha_manual(values = c("top 25%" = 1, "bottom 25%" = 0.5))
+
+mydf5 <- ggeffects::ggpredict(l3b, terms = c("mean_s_pos[-1.5564,-0.9052]"))
+mydf6 <- ggeffects::ggpredict(l4b, terms = c("mean_s_pos[-1.5564,-0.9052]"))
+x = 1:6
+y = mydf5$predicted[1]*x^2 + mydf6$predicted[1]*x
+d <- data.frame(x,y,level = "bottom 25%")
+
+y = mydf5$predicted[2]*x^2 + mydf6$predicted[2]*x
+d2 <- data.frame(x,y,level = "top 25%")
+
+d <- rbind(d,d2)
+
+pn <- ggplot(data = d,aes(x = x, y = y, alpha = level))+
+  geom_line(linewidth = 1, color = noiseColor)+
+  ylim(0,1)+
+  scale_x_continuous(breaks = 1:6, labels = c("9-11AM","11AM-1PM","1-3PM","3-5PM","5-7PM","7-9PM"),
+                     guide = guide_axis(angle = 45))+
+  labs(y = "predicted PA (a.u.)",
+       x = "time",
+       title = "diurnal variation by noise",
+       alpha = "noise level")+
+  scale_alpha_manual(values = c("top 25%" = 1, "bottom 25%" = 0.5))
+
+(pda+pd2)/
+ps/(pv+pn)+
+  plot_annotation(tag_levels = "A")+
+  plot_layout(heights = c(1,2,1))
+  
+
+ggsave("./figures/figure_dmv.png",width = 8, height = 10)
+```
+### diurnal terms and traits
+```{r fig.height=10, fig.width=10}
+chart.Correlation(df_master_ema %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,PA_se,PA_mssd,
+                                  `t_Estimate_PA`,`t^2_Estimate_PA`,R2c_PA,R2c_NA) %>% 
+                    rename(t2 = `t^2_Estimate_PA`,
+                           t = `t_Estimate_PA`))
+
+summary(lm(TEPS_sum ~ `t^2_Estimate_PA` + `t_Estimate_PA`,df_master_ema))
+summary(lm(HPS_sum ~ `t^2_Estimate_PA` + `t_Estimate_PA`,df_master_ema))
+summary(lm(CESD_sum ~ `t^2_Estimate_PA` + `t_Estimate_PA`,df_master_ema))
 ```
 

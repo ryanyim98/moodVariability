@@ -1,5 +1,5 @@
 ---
-title: "read_data"
+title: "read_data_task_ema"
 author: "Ryan Yan"
 date: "2024-01-16"
 output: html_document
@@ -8,7 +8,6 @@ output: html_document
 ## baseline questionnaires
 ```{r load data}
 indir <- './data/raw/'
-outdir <- './data/'
 #load initial questionnaires
 df_init <- read_csv(paste0(indir,'baseline_questionnaires.csv'))
 

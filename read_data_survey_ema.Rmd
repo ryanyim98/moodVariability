@@ -1,0 +1,205 @@
+---
+title: "read_data_task_ema"
+author: "Ryan Yan"
+date: "2024-01-16"
+output: html_document
+---
+
+## baseline questionnaires
+```{r load data}
+indir <- './data/raw/'
+outdir <- './data/'
+#load initial questionnaires
+df_init <- read_csv(paste0(indir,'baseline_questionnaires.csv'))
+
+df_init <- df_init%>% 
+  rename(Prolific.Id = Last.Name)%>%
+  filter(Prolific.Id != '')%>% #filter those without prolific id
+  dplyr::select(Response.Id:Trigger.Index,During.the.past.week....I.was.bothered.by.things.that.usually.don.t.bother.me.:During.the.past.week....I.could.not.get.going,#25-44
+Understand.the.reasons.when.I.feel.very.excited.or.happy.:Can.slow.myself.down.when.I.want.to.,#46-69
+When.I.hear.about.a.new.movie.starring.my.favorite.actor.I.can.t.wait.to.see.it.:When.something.exciting.is.coming.up.in.my.life.I.really.look.forward.to.it.,#71-88
+Right.now...I.feel.calm:Right.now....I.feel.pleasant,#90-109
+In.general....I.feel.pleasant:In.general...I.get.in.a.state.of.tension.or.turmoil.as.I.think.over.recent.concerns.and.interests) #111-130
+
+#load PANAS
+df_PANAS <- read.csv(paste0(indir,"ema_panas_sf.csv"))
+
+df_PANAS <- df_PANAS%>%
+  rename(Prolific.Id = Last.Name)%>%
+  filter(Prolific.Id != '')%>% #filter those without prolific id
+  dplyr::select(Response.Id:Trigger.Index, 
+         Interested, Distressed, Excited, Upset, Strong,
+         Guilty, Scared, Hostile, Enthusiastic, Proud, 
+         Irritable, Alert, Ashamed, Inspired, Nervous,
+         Determined, Attentive, Jittery, Active, Afraid)
+```
+
+```{r sort obs. and delete duplicates}
+#-----------PANAS-----------
+df_PANAS <- df_PANAS[order(df_PANAS$Prolific.Id,df_PANAS$Trigger.Index),] #order the data frame by user id and trigger index
+
+#return user ids and the number of rows they have (ie. No of PANAS completed)
+user_PANAS <- df_PANAS%>%
+  group_by(Prolific.Id)%>%
+  count()%>%
+  filter(n >= 90)#change the number into the wanted threshold!
+  
+df_PANAS <- df_PANAS %>%
+  filter(Prolific.Id %in% user_PANAS$Prolific.Id) 
+
+#only keep the first of all duplicate cases
+df_PANAS <- df_PANAS%>%
+  group_by(Prolific.Id,Trigger.Index)%>%
+  slice_head()%>%
+  ungroup()
+
+#calculate PA and NA for PANAS
+df_PANAS <- df_PANAS %>%
+  mutate(PA_sum = Interested + Excited + Strong + Enthusiastic + Proud + Alert + Inspired + Determined + Attentive + Active) %>%
+  mutate(NA_sum = Distressed + Upset + Guilty + Scared + Hostile + Irritable + Ashamed + Nervous + Jittery + Afraid) %>% 
+  mutate(PAminusNA_sum = PA_sum - NA_sum,
+         PANA_sum = PA_sum + NA_sum)
+
+# #check if there is still any duplicate, should be none!
+df_PANAS%>%
+  group_by(Prolific.Id,Trigger.Index)%>%
+  count()%>%
+  filter(n != 1)
+
+df_PANAS <- df_PANAS%>%
+  mutate(day_index = (Trigger.Index-1) %/%6 +1)%>%
+  mutate(time_index = (Trigger.Index-1) %%6 + 1)%>%
+  mutate(day_time_index = paste0(day_index,'_',time_index)) %>% 
+  relocate(c(day_index,time_index),.after = Trigger.Index)
+
+df_PANAS_mean <- df_PANAS %>% 
+  ungroup() %>% 
+  group_by(Prolific.Id) %>% 
+  mutate(PA_sum_scaled = as.numeric(scale(PA_sum)),
+         NA_sum_scaled = as.numeric(scale(NA_sum)),) %>% 
+  summarise(PA_mean = mean(PA_sum, na.rm = T),
+            NA_mean = mean(NA_sum, na.rm = T),
+            PA_se = sd(PA_sum, na.rm = T)/sqrt(n()),
+            NA_se = sd(NA_sum, na.rm = T)/sqrt(n()),
+            PA_se_scaled = sd(PA_sum_scaled, na.rm = T)/sqrt(n()),
+            NA_se_scaled = sd(NA_sum_scaled, na.rm = T)/sqrt(n()),
+            PA_mssd = psych::rmssd(PA_sum),
+            NA_mssd = psych::rmssd(NA_sum))
+
+df_panas_Est <- read.csv(paste0(outdir,'./ema_panas_params.csv')) %>% 
+  pivot_wider(names_from = panas_type, values_from = mean_mu:mean10_vs)
+
+#-----------init Q-----------
+df_init <- df_init%>%
+  filter(Prolific.Id %in% user_PANAS$Prolific.Id)%>%
+  filter(Survey.Name != 'MIS Consent Form')%>%
+  mutate(Trigger.Date = as.Date(Trigger.Date,"%d/%m/%Y"))
+
+#reorder
+df_init <- df_init[order(df_init$Prolific.Id,df_init$Trigger.Index,df_init$Trigger.Date),]
+
+#delete duplicates
+df_init <- df_init%>%
+  group_by(Prolific.Id)%>%
+  slice_head(n = 4)%>% #only take the first four rows earliest in time; comment this line to see the original data with duplicates
+  ungroup()
+```
+
+```{r calc and aggregate baseline questionnaires}
+#-----------CESD: 20 items-----------
+#item already reversely coded
+df_CESD <- df_init%>%
+  filter(Survey.Name == 'CESD')%>%
+  dplyr::select(Prolific.Id,
+         During.the.past.week....I.was.bothered.by.things.that.usually.don.t.bother.me.:During.the.past.week....I.could.not.get.going)#20-39
+
+names(df_CESD)[2:21] <- paste0('CESD',1:20)
+df_CESD$CESD_sum <- rowSums(df_CESD[,2:21])
+
+#-----------HPS: 24 items---------------
+df_HPS <- df_init%>%
+  filter(Survey.Name == 'HPS')%>%
+  dplyr::select(Prolific.Id,
+         Understand.the.reasons.when.I.feel.very.excited.or.happy.:Can.slow.myself.down.when.I.want.to.)
+#
+
+names(df_HPS)[2:25] <- paste0('HPS',1:24)
+df_HPS$HPS_sum <- rowSums(df_HPS[,2:25])
+ltm::cronbach.alpha(df_HPS[2:25])
+
+#-----------TEPS: 18 items---------------
+df_TEPS <- df_init%>%
+  filter(Survey.Name == 'TEPS')%>%
+  dplyr::select(Prolific.Id,
+         When.I.hear.about.a.new.movie.starring.my.favorite.actor.I.can.t.wait.to.see.it.:When.something.exciting.is.coming.up.in.my.life.I.really.look.forward.to.it.)
+
+names(df_TEPS)[2:19] <- paste0('TEPS',1:18)
+df_TEPS$TEPS_sum <- rowSums(df_TEPS[,2:19])
+df_TEPS$TEPS_ant_sum <- rowSums(df_TEPS[,1+c(1,4,6,8,10,11,13,15,16,18)])
+df_TEPS$TEPS_con_sum <- rowSums(df_TEPS[,1+c(2,3,5,7,9,12,14,17)])
+ltm::cronbach.alpha(df_TEPS[2:19])
+
+#-----------STAI: 20*2 items---------------
+df_STAI <- df_init%>%
+  filter(Survey.Name == 'STAI')%>%
+  dplyr::select(Prolific.Id,
+         Right.now...I.feel.calm:In.general...I.get.in.a.state.of.tension.or.turmoil.as.I.think.over.recent.concerns.and.interests)
+
+names(df_STAI)[2:21] <- paste0('STAI_SA',1:20)
+names(df_STAI)[22:41] <- paste0('STAI_TA',1:20)
+df_STAI$STAI_SA_sum <- rowSums(df_STAI[,2:21])
+df_STAI$STAI_TA_sum <- rowSums(df_STAI[,22:41])
+
+#aggregate init Qs
+df_init_sum <- Reduce(merge, list(df_CESD, df_HPS, df_TEPS, df_STAI))
+  # filter(Prolific.Id %in%PANAS_and_gorilla_user$Prolific.Id)
+
+#sanity check
+names(df_init_sum)
+length(df_init_sum$Prolific.Id)
+```
+
+
+## Bayesian model estimate timecourses
+```{r}
+df_panas_Est_tc <- read.csv(paste0(outdir,'./ema_panas_params_timecourse.csv')) %>% 
+  group_by(id,panas_type) %>% 
+  mutate(trial_id = row_number())
+
+df_panas_Est_tc <- left_join(df_panas_Est_tc, 
+          df_PANAS %>% 
+  dplyr::select(Prolific.Id,PA_sum,NA_sum,PAminusNA_sum,) %>% 
+  rename(id = Prolific.Id,
+         pos = PA_sum,
+         neg = NA_sum,
+         posminusneg = PAminusNA_sum) %>%
+    mutate(posminusneg_hr = posminusneg) %>% 
+    relocate(posminusneg_hr, .after = posminusneg) %>% 
+  pivot_longer(pos:posminusneg_hr,names_to = "panas_type", values_to = "origval") %>% 
+  group_by(id,panas_type) %>% 
+  mutate(trial_id = row_number()),
+  by = c("id","panas_type","trial_id"))
+```
+
+```{r}
+df_master_ema <- left_join(df_init_sum,df_PANAS_mean) %>% 
+  left_join(df_panas_Est %>% 
+              rename(Prolific.Id = id))
+
+df_PANAS_availability <- df_PANAS %>% 
+  filter(Prolific.Id %in% df_master_ema$Prolific.Id) %>% 
+  group_by(Prolific.Id) %>% 
+  summarise(n_panas = sum(!is.na(Interested)))
+```
+
+#read demographics
+```{r}
+demo_info_ema <- read_csv("~/Desktop/MoodInstability/Paper\ Material\ for\ Ryan/AppleTask_scripts_1/Demographics.csv") %>% 
+  filter(status == "APPROVED") %>% 
+  filter(participant_id %in% df_master_ema$Prolific.Id) %>% 
+  group_by(participant_id) %>% 
+  mutate(rowid = row_number()) %>% 
+  filter(rowid == 1) %>% 
+  dplyr::select(-rowid)
+```
+

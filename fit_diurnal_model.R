@@ -21,15 +21,17 @@ for (k in 1:length(unique(df_PANAS_forlm$Prolific.Id))){
     filter(Prolific.Id == temp_id)
   #fit a mixed effect model to a single participant's data
   ##  PA
-  # mixed.lme_PA_temp <-lmer(PA_sum ~ I(time_index^2) + time_index +(1|day_index),data=df_lm_temp) #According to past literature, use quadratic term
-  mixed.lme_PA_temp <-lmer(PA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index),data=df_lm_temp)
+  #According to past literature, use quadratic term
+  # mixed.lme_PA_temp <-lmer(PA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index),data=df_lm_temp)
+  mixed.lme_PA_temp <-lm(PA_sum_scaled ~ I(time_index^2) + time_index,data=df_lm_temp)
   lmPA <-  summary(mixed.lme_PA_temp)
   
   # #predicted value
   # df_lm_temp1 <- df_lm_temp %>%
   # mutate(PA_pred_val = fitted(mixed.lme_PA_temp), PA_res = lmPA$residuals)
   
-  df_lmPA_sum_temp <- as.data.frame.array(lmPA$coefficients[,c(1,5)])
+  # df_lmPA_sum_temp <- as.data.frame.array(lmPA$coefficients[,c(1,5)])
+  df_lmPA_sum_temp <- as.data.frame.array(lmPA$coefficients[,c(1,4)])
   rownames(df_lmPA_sum_temp) <- c('Intercept','t^2','t')
   colnames(df_lmPA_sum_temp) <- c('Estimate','pValue')
   df_lmPA_sum_temp <- tibble::rownames_to_column(df_lmPA_sum_temp, "TERM")%>%
@@ -71,11 +73,13 @@ for (k in 1:length(unique(df_PANAS_forlm$Prolific.Id))){
   #
   ##  NA
   if (temp_id != "5cb20f2d7c917b00172dfef5"){
-    mixed.lme_NA_temp <-lmer(NA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index),data=df_lm_temp) #According to past literature, use quadratic term
+    #According to past literature, use quadratic term
+    # mixed.lme_NA_temp <-lmer(NA_sum_scaled ~ I(time_index^2) + time_index +(1|day_index),data=df_lm_temp) 
+    mixed.lme_NA_temp <-lm(NA_sum_scaled ~ I(time_index^2) + time_index,data=df_lm_temp) 
     lmNA <- summary(mixed.lme_NA_temp)
     
     #store model output in a data frame
-    df_lmNA_sum_temp <- as.data.frame.array(lmNA$coefficients[,c(1,5)])
+    df_lmNA_sum_temp <- as.data.frame.array(lmNA$coefficients[,c(1,4)])
     rownames(df_lmNA_sum_temp) <- c('Intercept','t^2','t')
     colnames(df_lmNA_sum_temp) <- c('Estimate','pValue')
     df_lmNA_sum_temp <- tibble::rownames_to_column(df_lmNA_sum_temp, "TERM")%>%

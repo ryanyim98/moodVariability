@@ -33,7 +33,7 @@ muColor <- 'forestgreen'
 
 # load and combine data
 ```{r warning=FALSE,message=FALSE}
-rmarkdown::render("read_data.Rmd")
+rmarkdown::render("read_data_task_ema.Rmd")
 source(here::here("run_reg.R"))
 ```
 # demographics
@@ -1426,6 +1426,7 @@ summary(lm(scale(TEPS_sum) ~ scale(loseday_X1) + scale(loseday_X2) + scale(losed
 
 summary(lm(scale(HPS_sum) ~ scale(winday_X1) + scale(winday_X2) + scale(winday_X3), df_master))
 summary(lm(scale(HPS_sum) ~ scale(loseday_X1) + scale(loseday_X2) + scale(loseday_X3), df_master))
+summary(lm(scale(HPS_sum) ~ scale(loseday_X1) + scale(winday_X1), df_master))
 # summary(lm(scale(HPS_sum) ~ scale(wof_X1) + scale(wof_X2) + scale(wof_X3), df_master))
 
 summary(lm(scale(CESD_sum) ~ scale(winday_X1) + scale(winday_X2) + scale(winday_X3), df_master))
