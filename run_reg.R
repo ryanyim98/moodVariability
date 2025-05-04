@@ -4,9 +4,10 @@ db_list <- c("day1_block1","day1_block2","day2_block1","day2_block2")
 df_Xs_scaled_all <-  data.frame()
 df_betas_scaled_all <- data.frame()
 
+#make the df
 for (l in 1:4){
   db <- db_list[l]
-  print(paste0("printing ",db))
+  # print(paste0("printing ",db))
   df_all_subs_scaled <- data.frame()
   
   df_Xs_scaled <- matrix(NA,nsub,5)
@@ -25,7 +26,8 @@ for (l in 1:4){
     df_betas_scaled[m,2] <- temp_participant_id
     
     temp_df = df_reg%>%
-      filter(Participant.Public.ID == temp_participant_id, day_block == db)
+      filter(Participant.Public.ID == temp_participant_id, day_block == db,
+             Mood.Index!=0)
  
     #fit linear model to this participant's data
     if(nrow(temp_df) > 0 & prod(is.na(temp_df$moodrate_scaled)) == 0 & length(unique(temp_df$moodrate_scaled)) != 1){
@@ -56,9 +58,9 @@ for (l in 1:4){
 df_Xs_scaled_all <- df_Xs_scaled_all %>% 
   filter(day_block %in% c("day1_block1","day2_block1")) %>% 
   group_by(Participant.Public.ID) %>% 
-  summarise(X1 = mean(X1),
-            X2 = mean(X2),
-            X3 = mean(X3)) 
+  summarise(X1 = mean(X1,na.rm = T),
+            X2 = mean(X2,na.rm = T),
+            X3 = mean(X3,na.rm = T)) 
 
 df_Xs_scaled_all_long <- df_Xs_scaled_all%>% 
   pivot_longer(X1:X3,names_to = "regression_coef", values_to = "value")
@@ -85,7 +87,8 @@ for (l in 1:4){
     df_betas_scaled[m,2] <- temp_participant_id
     
     temp_df = df_reg%>%
-      filter(Participant.Public.ID == temp_participant_id, day_block == db)
+      filter(Participant.Public.ID == temp_participant_id, day_block == db,
+             Mood.Index!=0)
     
     #fit linear model to this participant's data
     if(nrow(temp_df) > 0 & prod(is.na(temp_df$moodrate_scaled)) == 0 & length(unique(temp_df$moodrate_scaled)) != 1){
@@ -97,6 +100,8 @@ for (l in 1:4){
         temp_outcome = df_coeff[(3*k-1):(3*k+1),1]
         df_Xs_scaled[m, k+2] <- mean(temp_outcome)
       } #else just leave it as NAs in df_Xs_scaled
+    } else{
+      print(paste0("subject ",temp_participant_id," has only 1 rating value, ",unique(temp_df$moodrate)))
     }
   }
   
@@ -114,12 +119,12 @@ for (l in 1:4){
 df_Xs_scaled_all2 <- df_Xs_scaled_all2 %>% 
   filter(day_block %in% c("day1_block1","day2_block1")) %>% 
   group_by(Participant.Public.ID) %>% 
-  summarise(X1o = mean(X1),
-            X2o = mean(X2),
-            X3o = mean(X3),
-            X1mo = mean(X1m),
-            X2mo = mean(X2m),
-            X3mo = mean(X3m)) 
+  summarise(X1o = mean(X1,na.rm = T),
+            X2o = mean(X2,na.rm = T),
+            X3o = mean(X3,na.rm = T),
+            X1mo = mean(X1m,na.rm = T),
+            X2mo = mean(X2m,na.rm = T),
+            X3mo = mean(X3m,na.rm = T)) 
 
 df_Xs_scaled_all2_long <- df_Xs_scaled_all2%>% 
   pivot_longer(X1o:X3mo,names_to = "regression_coef", values_to = "value")

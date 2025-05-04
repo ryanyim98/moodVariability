@@ -44,6 +44,25 @@ df_lm_sum <- read_csv(paste(outdir, 'panas_lm_params.csv'))
 df_master_ema <- left_join(df_master_ema, df_lm_sum %>% 
   dplyr::select(Prolific.Id,model,Intercept_Estimate:t_Estimate,R2c) %>% 
   pivot_wider(names_from = model, values_from = c(Intercept_Estimate:R2c)))
+
+source(here::here("AR.R"))#autoregressive model functions
+
+#join autoregressive PANAS
+str <- c("PA_sum", "NA_sum","PAminusNA_sum") # your strings for naming the variables
+result <- AR_PANAS(df_PANAS, str)
+df_AR_PANAS <- data.frame(cbind(result$S,result$ui))
+names(df_AR_PANAS) <- c(result$names,"Prolific.Id")
+
+# 
+# str = c("day1_block1","day1_block2","day2_block1","day2_block2")
+# result <- AR_task(df_mood_AR, str)
+# df_AR_task <- data.frame(cbind(result$S,result$ui))
+# names(df_AR_task) <- c(result$names,"Prolific.Id")
+
+df_master_ema <- left_join(df_master_ema,df_AR_PANAS,by = "Prolific.Id")%>% 
+  mutate(AR_PA_sum = as.numeric(AR_PA_sum),
+         AR_NA_sum = as.numeric(AR_NA_sum))
+
 ```
 # demographics
 ```{r}
@@ -98,7 +117,7 @@ HPS correlated with higher PA and NA; TEPS correlated with higher PA and lower N
 
 HPS correlated with every variability measure; TEPS correlated with PA variability; CESD/STAI correlated with NA variability 
 
-```{r fig.height=10, fig.width=10}
+```{r}
 chart.Correlation(df_master_ema %>% 
                     dplyr::select(TEPS_sum,HPS_sum,CESD_sum,
                                   PA_mean,NA_mean))
@@ -111,9 +130,10 @@ chart.Correlation(df_master_ema %>%
 
 ```{r}
 df_corr <- df_master_ema %>% 
+  ungroup() %>% 
   dplyr::select(TEPS_sum,HPS_sum,CESD_sum,#STAI_SA_sum,STAI_TA_sum,#trait_NA,
-                           PA_mean,NA_mean,PA_se,PA_mssd,NA_se, NA_mssd) %>% 
-  rename(TEPS = TEPS_sum, HPS = HPS_sum, CESD = CESD_sum)
+                           PA_mean,AR_PA_sum,PA_se,PA_mssd,NA_mean,AR_NA_sum,NA_se, NA_mssd) %>% 
+  rename(TEPS = TEPS_sum, HPS = HPS_sum, CESD = CESD_sum) 
 
 chart.Correlation(df_corr)
 
@@ -130,14 +150,14 @@ ggcorrplot::ggcorrplot(corm,
            p.mat = p.mat, lab = T, insig = "blank", type = "lower",
            colors = c("skyblue", "white", "orange"))
 
-ggsave("./figures/figure_corr.png",width = 8, height = 5)
+ggsave("./figures/figure_corr.png",width = 8, height = 6)
 ```
 
 
 Here, we see that the computational model reduced correlations among the variability measures
 ```{r}
 chart.Correlation(df_master_ema %>% 
-                    dplyr::select(PA_se,PA_mssd,NA_se,NA_mssd))
+                    dplyr::select(PA_se,PA_mssd,AR_PA_sum,NA_se,NA_mssd,AR_NA_sum))
 
 chart.Correlation(df_master_ema %>% 
                     dplyr::select(mean5_vmu_pos,mean5_s_pos,mean5_vmu_neg,mean5_s_neg))
@@ -521,7 +541,7 @@ c6 <- ppcor::pcor(df_master_ema %>% dplyr::select(HPS_sum,TEPS_sum,CESD_sum,STAI
                     drop_na())
 ```
 
-```{r fig.width= 12,fig.height= 8}
+```{r }
 ggplot(df_master_ema, aes(x = TEPS_sum, y = mean_mu_pos))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", fill = muColor, color = muColor) +
@@ -935,3 +955,25 @@ summary(lm(HPS_sum ~ `t^2_Estimate_PA` + `t_Estimate_PA`,df_master_ema))
 summary(lm(CESD_sum ~ `t^2_Estimate_PA` + `t_Estimate_PA`,df_master_ema))
 ```
 
+# autoregression stuff
+### PA and NA AR separately
+```{r}
+df_corr <- df_master_ema %>% 
+                    ungroup() %>% 
+                    drop_na() %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,PA_mean,NA_mean,AR_PA_sum,AR_NA_sum,PA_mssd,NA_mssd,
+                                  mean5_vmu_pos,mean5_vmu_neg,mean5_s_pos,mean5_s_neg)
+
+corm <- cor(df_corr,
+            method = "pearson", use = "complete.obs")
+
+p.mat <- cor_pmat(df_corr,
+            method = "pearson", use = "complete.obs")
+
+knitr::kable(corm, digits = 3)
+knitr::kable(p.mat, digits = 3)
+
+ggcorrplot::ggcorrplot(corm, 
+           p.mat = p.mat, lab = T, insig = "blank", type = "lower",tl.cex = 10,lab_size = 3,
+           colors = c("skyblue", "white", "orange"))
+```
