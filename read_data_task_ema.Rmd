@@ -248,6 +248,18 @@ df_mood <- df_all%>%
   ungroup() %>% 
   filter(Index <= 41)#should be between 1 and 41
 
+# get the participants who only had 1 rating across the runs
+subj_exclude_novariance <- df_mood %>% 
+  filter(day_block %in% c("day1_block1","day2_block1")) %>% 
+  group_by(Participant.Public.ID,day_block) %>% 
+  summarise(n = length(unique(moodrate))) %>% 
+  filter(n==1) %>%
+  mutate(subj_day_block = paste0(Participant.Public.ID,"_",day_block))
+
+df_mood <- df_mood %>%
+  mutate(subj_day_block = paste0(Participant.Public.ID,"_",day_block)) %>% 
+  filter(!subj_day_block %in% subj_exclude_novariance$subj_day_block)
+
 #add variable: day and block
 #find another way! loops are too time-consuming
 df_mood$day[df_mood$day_block == "day1_block1" | df_mood$day_block == "day1_block2"] <- 1
@@ -265,7 +277,9 @@ df_mood_scaled <- df_all%>%
   group_by(Participant.Public.ID,day_block)%>%
   mutate(Index = row_number())%>%
   ungroup() %>% 
-  filter(Index <= 41)
+  filter(Index <= 41) %>%
+  mutate(subj_day_block = paste0(Participant.Public.ID,"_",day_block)) %>% 
+  filter(!subj_day_block %in% subj_exclude_novariance$subj_day_block)
 
 df_mood_scaled$day[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day1_block2"] <- 1
 df_mood_scaled$block[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day2_block1"] <- 1
@@ -278,6 +292,17 @@ df_mood_scaled <- left_join(df_mood_scaled,df_wof, by = "Participant.Public.ID")
                              ifelse(wofoutcome1 == 1 & day == 2, paste0("loseday_block",block),
                                     ifelse(wofoutcome1 == 0 & day == 1, paste0("loseday_block",block),
                                            ifelse(wofoutcome1 == 0 & day == 2, paste0("winday_block",block),NA)))))
+```
+
+```{r}
+#get DF for completion time
+df_all %>% 
+  filter(component == "moodrate",
+         Trial.Index == 0 | is.na(Trial.Index)) %>% 
+  ungroup() %>% 
+  dplyr::select(Participant.Public.ID,day_block,Local.Date) %>% 
+  arrange(Participant.Public.ID)
+
 ```
 
 ```{r}
@@ -294,11 +319,11 @@ df_mood_AR <- df_mood %>%
 ```{r}
 df_wof_react <- rbind(df_mood_scaled %>% 
                         ungroup() %>% 
-                        dplyr::select(-Trial.Index) %>% 
+                        dplyr::select(-Trial.Index,-subj_day_block) %>% 
   filter(block == 1, (Index >= 1 & Index <= 3) | Index == 41),
   df_mood_scaled %>% 
     ungroup() %>% 
-    dplyr::select(-Trial.Index) %>% 
+    dplyr::select(-Trial.Index,-subj_day_block) %>% 
     filter(block == 2,(Index >= 1 & Index <= 3) | Index == 41)) %>% 
     dplyr::select(-day,-block,-moodrate,-day_block,-wofoutcome2) %>% 
     ungroup() %>% 
@@ -311,6 +336,9 @@ df_wof_react <- df_wof_react %>%
          loseday_X1 = loseday_block2_1 - loseday_block1_41 , #- (loseday_block1_1 - loseday_block2_41)
          loseday_X2 = loseday_block2_2 - loseday_block1_41 ,#- (loseday_block1_2 - loseday_block2_41)
          loseday_X3 = loseday_block2_3 - loseday_block1_41) #- (loseday_block1_3 - loseday_block2_41)
+
+df_wof_react <- df_wof_react %>% 
+  filter(Participant.Public.ID %in% df_master$Prolific.Id)
 ```
 
 

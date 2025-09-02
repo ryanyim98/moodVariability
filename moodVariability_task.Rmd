@@ -49,9 +49,20 @@ result <- AR_task(df_mood_AR, str)
 df_AR_task <- data.frame(cbind(result$S,result$ui))
 names(df_AR_task) <- c(result$names,"Prolific.Id")
 
-df_master <- left_join(df_master,df_AR_task,by = "Prolific.Id") %>% 
-  left_join(df_AR_PANAS,by = "Prolific.Id")
+subj_exclude_novariance_ <- subj_exclude_novariance %>% 
+  group_by(Participant.Public.ID) %>% 
+  count() %>% 
+  filter(n==2)
 
+df_master <- left_join(df_master,df_AR_task,by = "Prolific.Id") %>% 
+  left_join(df_AR_PANAS,by = "Prolific.Id") %>% 
+  filter(!Prolific.Id %in% subj_exclude_novariance_$Participant.Public.ID) #these people have neither days ratings available due to constant ratings
+
+demo_info <- demo_info %>% 
+  filter(!participant_id %in% subj_exclude_novariance_$Participant.Public.ID,
+         participant_id %in% df_master$Prolific.Id) #these people have neither days ratings available due to constant ratings
+
+df_master[is.nan(as.matrix(df_master))] <- NA
 
 df_master <- df_master%>% 
   mutate_at(vars(AR_PA_sum,AR_NA_sum,AR_PAminusNA_sum,
@@ -65,6 +76,7 @@ sum(is.na(df_master$X1))
 # demographics
 ```{r}
 sum(is.na(demo_info$Sex))
+summary(demo_info$Sex)
 table(demo_info$Sex)
 
 sum(is.na(demo_info$age))
@@ -76,8 +88,12 @@ max(demo_info$age, na.rm = T)
 
 table(demo_info$`Country of Birth`)
 
+sum(is.na(demo_info$`First Language`))
 table(demo_info$`First Language`)
+
 table(demo_info$`Country of Birth`)
+
+sum(is.na(demo_info$`Current Country of Residence`))
 table(demo_info$`Current Country of Residence`)
 ```
 ## the day between two runs of apple tasks
@@ -103,6 +119,28 @@ df_PANAS_completion<-df_PANAS %>%
 mean(df_PANAS_completion$n)
 sd(df_PANAS_completion$n)
 ```
+
+# mean questionnaire scores
+```{r}
+mean(df_master$CESD_sum)
+sd(df_master$CESD_sum)
+
+mean(df_master$HPS_sum)
+sd(df_master$HPS_sum)
+
+mean(df_master$STAI_SA_sum)
+sd(df_master$STAI_SA_sum)
+
+mean(df_master$STAI_TA_sum)
+sd(df_master$STAI_TA_sum)
+
+mean(df_master$TEPS_ant_sum)
+sd(df_master$TEPS_ant_sum)
+
+mean(df_master$TEPS_con_sum)
+sd(df_master$TEPS_con_sum)
+```
+
 
 
 # part 1: Linking task and EMA mood variability
@@ -156,8 +194,12 @@ p0 <-ggplot(data=l, aes(x = regression_coef, y = fit))+
 s1a <- summary(l1a<-lm(scale(mean_mu) ~ scale(X1), df_master))
 round(confint(l1a, level=0.95),3)
 ss1b <- summary(lm(scale(mean_mu) ~ scale(X1) + scale(X2), df_master))
+round(confint(lm(scale(mean_mu) ~ scale(X1) + scale(X2), df_master), level=0.95),3)
 ss1c <- summary(lm(scale(mean_mu) ~ scale(X1) + scale(X2) + scale(X3), df_master))
-
+round(confint(lm(scale(mean_mu) ~ scale(X1) + scale(X2) + scale(X3), df_master), level=0.95),3)
+summary(ll<-lm(scale(mean_mu) ~ scale(X1) + scale(X2) + scale(X3) + scale(mean5_s) + scale(mean5_vmu), df_master))
+round(confint(ll, level=0.95),3)
+  
 df_master$residuals1[!is.na(df_master$X1)] <- as.vector(residuals(s1a))
 s1bb <- summary(l1b<-lm(scale(residuals1) ~ scale(X2), df_master))
 round(confint(l1b, level=0.95),3)
@@ -246,6 +288,7 @@ sd(df_totalmon$day2_block1)
 ### 1.2.2 Dependency of PANAS parameter on emotional reactivity
 ```{r}
 s1a <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1), df_master))
+confint(lm(scale(mean_mu_posminusneg) ~ scale(X1), df_master))
 s1b <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1) + scale(X2), df_master))
 s1c <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1) + scale(X2) + scale(X3), df_master))
 
@@ -265,6 +308,7 @@ s2cc <- summary(lm(scale(residuals2) ~ scale(X3), df_master))
 
 s3a <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1), df_master))
 s3b <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1) + scale(X2), df_master))
+confint(lm(scale(mean5_s_posminusneg) ~ scale(X1) + scale(X2), df_master))
 s3c <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1) + scale(X2) + scale(X3), df_master))
 
 df_master$residuals1[!is.na(df_master$X1)] <- as.vector(residuals(s3a))
@@ -991,23 +1035,26 @@ p2 <- ggplot(df_master, aes(x = mean5_vmu_d1r1, y = mean5_vmu_d2r2))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = vmuColor, fill = vmuColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title ="reliability of task volatility across 2 days",
+  labs(title ="reliability of task volatility",
        x = "task volatility day 1",
        y = "task volatility day 2")+
 ggplot(df_master, aes(x = mean5_s_d1r1, y = mean5_s_d2r1))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = noiseColor, fill = noiseColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title ="reliability of task noise across 2 days",
+  labs(title ="reliability of task noise",
        x = "task noise day 1",
        y = "task noise day 2")+
 ggplot(df_master, aes(x = mean_mu_d1r1, y = mean_mu_d2r1))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm", color = muColor, fill = muColor) +
   stat_poly_eq(use_label(c("R2","p")))+
-  labs(title ="reliability of task mu across 2 days",
+  labs(title ="reliability of task mu",
        x = "task mu day 1",
        y = "task mu day 2")
+
+p2
+ggsave("./figures/figure_reliability_supp.png",width = 8, height = 3)
 
 ggplot(df_master, aes(x = moodrate_se_day1_block1, y = moodrate_se_day2_block1))+
   geom_point(size = 0.5)+
@@ -1081,7 +1128,7 @@ p3b <- ggplot(data = df_gor_Est_tc_sum %>% filter(parameter == "mu (original spa
   scale_fill_manual(values = c("grey30","grey"))+
   facet_wrap(~parameter+run)+
   theme(legend.position = "none")+
-  labs(x = "",
+  labs(x = "trial ID",
        subtitle = "mu overlaid on original mood ratings")
 
 
@@ -1120,7 +1167,8 @@ p4<-ggplot(df_panas_Est_tc_sum %>% filter(parameter %in% c("vmu","SD")), aes(x =
               alpha = 0.3, color = NA)+
   facet_wrap(~parameter,nrow = 5, scales = "free_y")+
   labs(y = "parameter values",
-       subtitle = "variability measures")+
+       subtitle = "variability measures",
+       x = "data point")+
   scale_color_manual(values = "darkgrey")+
   scale_fill_manual(values = "darkgrey")+
   scale_x_continuous(breaks = seq(0,120,12))+
@@ -1141,7 +1189,7 @@ p4b <- ggplot(data = df_panas_Est_tc_sum %>% filter(parameter == "mu (original s
   scale_fill_manual(values = muColor)+
   scale_x_continuous(breaks = seq(0,120,12))+
   theme(legend.position = "none")+
-  labs(x = "",
+  labs(x = "data point",
        subtitle = "mu overlaid on original mood ratings")
 ```
 
@@ -1149,7 +1197,7 @@ p4b <- ggplot(data = df_panas_Est_tc_sum %>% filter(parameter == "mu (original s
 ((p3b/p3)|(p4b/p4))/p1+
   plot_layout(heights = c(3,1))+
   plot_annotation(tag_levels = "A")
-ggsave("./figures/figure_reliability.png",width = 9, height = 8)
+ggsave("./figures/figure_reliability.png",width = 8, height = 8)
 ```
 
 ```{r}
@@ -1180,6 +1228,9 @@ summary(lm(scale(mean5_s) ~ scale(mean5_vmu), df_master))
 summary(lm(scale(mean_mu_posminusneg) ~ scale(mean5_s_posminusneg), df_master))
 summary(lm(scale(mean_mu_posminusneg) ~ scale(mean5_vmu_posminusneg), df_master))
 summary(lm(scale(mean5_s_posminusneg) ~ scale(mean5_vmu_posminusneg), df_master))
+
+summary(lm(scale(mean_s_posminusneg) ~ scale(PA_mean)+scale(NA_mean), df_master))
+summary(lm(scale(mean5_vmu_posminusneg) ~ scale(PA_mean)+scale(NA_mean), df_master))
 ```
 
 ```{r}
@@ -1202,6 +1253,9 @@ summary(lm(scale(mean5_s) ~ scale(TEPS_sum), df_master))
 summary(lm(scale(TEPS_sum) ~ scale(mean5_s) + scale(mean_mu_posminusneg), df_master))
 
 summary(lm(scale(mean_mu_posminusneg) ~ scale(mean5_s), df_master))
+round(confint(lm(scale(mean_mu_posminusneg) ~ scale(mean5_s), df_master), level=0.95),3)
+plot_model(lm(mean_mu_posminusneg ~ mean5_s, df_master), 
+           type = "pred",terms = "mean5_s",show.data=T)
 summary(lm(scale(mean_mu_posminusneg) ~ scale(mean_mu), df_master))
 summary(lm(scale(mean_mu_posminusneg) ~ scale(mean5_vmu), df_master))
 
@@ -1655,11 +1709,36 @@ plot_model(l7)+plot_model(l8)
 Task affect variables are specifically associated with their ESM counterparts when controlling for other task variables. The only exception is ESM *mu* which was additionally associated with task *SD*.
 
 # part 2: Relationship between task params and (all?) baseline questionnaires
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=F}
 chart.Correlation(df_master %>% 
                     dplyr::select(mean5_vmu,mean5_s,mean_mu,
                                   mean5_vmu_posminusneg,mean5_s_posminusneg,mean_mu_posminusneg,
                                   moodrate_mean,moodrate_mssd,PAminusNA_mean,PAminusNA_mssd,X1,X2,X3))
+
+chart.Correlation(df_master %>% 
+                    dplyr::select(mean5_vmu,mean5_s,mean_mu))
+
+#why is mean ESM affect associated with task noise and X1?
+summary(lm(mean_mu_posminusneg~X1,df_master))
+summary(lm(mean_mu_posminusneg~mean5_s,df_master))
+
+summary(lm(mean_mu_posminusneg~X1+mean5_s+mean5_vmu,df_master))
+
+summary(lm(mean_mu_posminusneg~X1+mean_mu,df_master))
+summary(lm(mean_mu_posminusneg~mean5_s+mean_mu,df_master))
+
+#why is mean task affect associated with task noise and X1?
+summary(lm(mean_mu~X1,df_master))
+
+summary(lm(scale(mean_mu)~scale(mean5_s),df_master))
+confint(lm(scale(mean_mu)~scale(mean5_s),df_master))
+
+summary(lm(scale(mean_mu)~scale(mean5_vmu),df_master))
+confint(lm(scale(mean_mu)~scale(mean5_vmu),df_master))
+summary(lm(mean_mu~X1+mean5_s,df_master))
+summary(lm(mean_mu_posminusneg~mean5_s+mean_mu,df_master))
+
+mean(df_master$moodrate_mean,na.rm=T)
 ```
 
 ```{r}
@@ -1763,7 +1842,7 @@ p1 <- ggplot(bars %>%
                                    + (Estimate) / abs(Estimate) * 0.05), label = sig))+
   theme(legend.position = "none")+
   ylim(-0.55,1)+ 
-  theme(axis.text.x = element_text(angle = 45))
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
 
 
 s1a <- summary(lm(scale(PAminusNA_se) ~ scale(X1), df_master))
@@ -1838,7 +1917,7 @@ p2 <- ggplot(bars %>%
   geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
                                    + (Estimate) / abs(Estimate) * 0.05), label = sig))+
   theme(legend.position = "none")+
-  theme(axis.text.x = element_text(angle = 45))
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
 
 p1/p2
 
