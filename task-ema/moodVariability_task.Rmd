@@ -20,7 +20,7 @@ In addition we wondered about diurnal effects in the real world data, which were
 # library 
 ```{r warning=FALSE,message=FALSE}
 rm(list = ls())
-source(here::here("load_library.R"))
+source(here::here("../scripts/load_library.R"))
 ```
 
 ```{r warning=FALSE,message=FALSE}
@@ -33,9 +33,9 @@ muColor <- 'forestgreen'
 
 # load and combine data
 ```{r warning=FALSE,message=FALSE}
-rmarkdown::render("read_data_task_ema.Rmd")
-source(here::here("run_reg.R")) #X1~X3
-source(here::here("AR.R"))#autoregressive model functions
+rmarkdown::render("../scripts/read_data_task_ema.Rmd")
+source(here::here("../scripts/run_reg.R")) #X1~X3
+source(here::here("../scripts/AR.R"))#autoregressive model functions
 
 #join autoregressive PANAS
 str <- c("PA_sum", "NA_sum","PAminusNA_sum") # your strings for naming the variables
@@ -149,14 +149,14 @@ sd(df_master$TEPS_con_sum)
 
 $$Affect = setpoint + \sum_{t=1}^{T}event_t(a*e^{b(t-T)})$$
 
-![Simulation results.](./figures/figure_SimCorr.png)
+![Simulation results.](../figures/figure_SimCorr.png)
 Figure 1 shows that affective parameters acquired from a small portion (3%) of affective time-series, generally appear to correlate with equivalent parameters acquired from the full time-series.
 
-![Simulation results.](./figures/figure_SimExpVsbayes.png)
+![Simulation results.](../figures/figure_SimExpVsbayes.png)
 As illustrated in the 3 panels above, the filter’s estimated *mu* appears to generally increase as the affective set point increases, the filter’s estimated *SD* appears to generally increase as the initial deflection increases and the filter’s estimated *vmu* appears to generally increase as the decay rate decreases.
 
 ## 1.2 dependency of gorilla task parameters on emotional reactivity
-![Bayes params on task](./figures/figure_Bayes_vs_Betas.png)
+![Bayes params on task](../figures/figure_Bayes_vs_Betas.png)
 (a-c) Task *SD* is associated with the immediate impact of task events, which is consistent with the idea that it reflects the magnitude of initial affective deflection from baseline. Task *vmu* is associated with the persistent impact of task events, which is consistent with the idea that it reflects the rate at which affect returns to baseline. Unexpectedly, task *mu* is negatively associated with the immediate impact of task events, it is unclear what this signifies.
 (d-f)  As with task *SD*, ESM *SD* is associated with the immediate impact of task events, which is consistent with the idea that 𝑆𝐷 in everyday life reflects the magnitude of initial affective deflections from baseline. ESM *vmu* does not bear any significant relationship to the duration of responses to task events. ESM *mu* shows the same pattern of associations as ESM *SD*.
 
@@ -369,17 +369,17 @@ p0+(p1/p2)+
   plot_annotation(tag_levels = "A")+
   plot_layout(width = c(1,4))
 
-ggsave("./figures/figure_x1x3.png",width = 9, height = 7)
+ggsave("../figures/figure_x1x3.png",width = 9, height = 7)
 
 p0+(p1)+
   plot_annotation(tag_levels = "A")+
   plot_layout(width = c(1,4))
 
-ggsave("./figures/figure_x1x3_new.png",width = 9, height = 4)
+ggsave("../figures/figure_x1x3_new.png",width = 9, height = 4)
 
 p2
 
-ggsave("./figures/figure_x1x3_si.png",width = 6, height = 4)
+ggsave("../figures/figure_x1x3_si.png",width = 6, height = 4)
 
 summary(lm(scale(X1) ~  scale(mean_mu)+ scale(mean5_s) +scale(mean5_vmu), df_master))
 summary(lm(scale(X2) ~  scale(mean_mu)+ scale(mean5_s) +scale(mean5_vmu), df_master))
@@ -519,7 +519,7 @@ p2 <- ggplot(bars %>%
 (p1/p2)+
   plot_annotation(tag_levels = "A")
 
-ggsave("./figures/figure_x1x3_sep.png",width = 6, height = 7)
+ggsave("../figures/figure_x1x3_sep.png",width = 6, height = 7)
 ```
 
 ### same analysis, with considering magnitude
@@ -557,7 +557,7 @@ ggplot(df_master, aes(x = X3, y = X3mo))+
     labs(x = expression("" * beta * "3 outcome"),
        y = expression("" * beta * "3 magnitude"))
 
-ggsave("./figures/corr_mag.png",width = 8, height = 5)
+ggsave("../figures/corr_mag.png",width = 8, height = 5)
 ```
 
 ```{r}
@@ -761,7 +761,7 @@ p2mo <- ggplot(bars %>%
 p1mo/p2mo
 
 p0
-ggsave("./figures/figure_mag_out_dist.png",width = 6, height = 3)
+ggsave("../figures/figure_mag_out_dist.png",width = 6, height = 3)
 ```
 
 ```{r}
@@ -929,7 +929,7 @@ p1o/p2o
   plot_layout(nrow = 2)
 
 
-ggsave("./figures/figure_x1x3_mag_out.png",width = 8, height = 7)
+ggsave("../figures/figure_x1x3_mag_out.png",width = 8, height = 7)
 ```
 
 
@@ -982,7 +982,7 @@ ggsave("./figures/figure_x1x3_mag_out.png",width = 8, height = 7)
 <!--   plot_annotation(tag_levels = "A")+ -->
 <!--   plot_layout(width = c(1,4)) -->
 
-<!-- ggsave("./figures/figure_x1x3_hr.png",width = 9, height = 7) -->
+<!-- ggsave("../figures/figure_x1x3_hr.png",width = 9, height = 7) -->
 <!-- ``` -->
 
 ## 1.3 reliability of parameters
@@ -1054,7 +1054,7 @@ ggplot(df_master, aes(x = mean_mu_d1r1, y = mean_mu_d2r1))+
        y = "task mu day 2")
 
 p2
-ggsave("./figures/figure_reliability_supp.png",width = 8, height = 3)
+ggsave("../figures/figure_reliability_supp.png",width = 8, height = 3)
 
 ggplot(df_master, aes(x = moodrate_se_day1_block1, y = moodrate_se_day2_block1))+
   geom_point(size = 0.5)+
@@ -1197,7 +1197,7 @@ p4b <- ggplot(data = df_panas_Est_tc_sum %>% filter(parameter == "mu (original s
 ((p3b/p3)|(p4b/p4))/p1+
   plot_layout(heights = c(3,1))+
   plot_annotation(tag_levels = "A")
-ggsave("./figures/figure_reliability.png",width = 8, height = 8)
+ggsave("../figures/figure_reliability.png",width = 8, height = 8)
 ```
 
 ```{r}
@@ -1398,7 +1398,7 @@ p2c <- plot_model(lm(mean5_s_posminusneg ~ mean5_vmu + mean_mu + mean5_s, df_mas
   plot_annotation(tag_levels = "A")+
   plot_layout(nrow = 3,width = c(2,1))
 
-ggsave("./figures/figure_depend.png",width = 6, height = 7)
+ggsave("../figures/figure_depend.png",width = 6, height = 7)
 ```
 
 <!-- ```{r} -->
@@ -1484,7 +1484,7 @@ ggsave("./figures/figure_depend.png",width = 6, height = 7)
 <!-- p1/p2+ -->
 <!--   plot_annotation(tag_levels = "A") -->
 
-<!-- ggsave("./figures/figure_depend_hr.png",width = 9, height = 7) -->
+<!-- ggsave("../figures/figure_depend_hr.png",width = 9, height = 7) -->
 <!-- ``` -->
 
 ```{r}
@@ -1682,7 +1682,7 @@ design <- "
 (p2+p3+p1+p1b)+
   plot_annotation(tag_levels = "A")+
   plot_layout(design = design)
-ggsave("./figures/figure_depend2.png",width = 9, height = 7)
+ggsave("../figures/figure_depend2.png",width = 9, height = 7)
 ```
 
 
@@ -1921,7 +1921,7 @@ p2 <- ggplot(bars %>%
 
 p1/p2
 
-ggsave("./figures/figure_x1x3_se_mssd_ar.png",width = 6, height = 7)
+ggsave("../figures/figure_x1x3_se_mssd_ar.png",width = 6, height = 7)
 ```
 
 ## 2.2 Task params and baseline questionnaires (paper 1 or 2?)
@@ -2063,7 +2063,7 @@ p3 <- ggplot(bars %>%
 
 p3+p1+p2+plot_layout(nrow =3)+
   plot_annotation(tag_levels = "A")
-ggsave("./figures/figure_x1x3_qs.png",width = 8, height = 12)
+ggsave("../figures/figure_x1x3_qs.png",width = 8, height = 12)
 ```
 
 
@@ -2297,7 +2297,7 @@ p2 <- ggplot(bars %>%
 (p0+p1/p2)+
   plot_annotation(tag_levels = "A")
 
-ggsave("./figures/figure_x1x3_WOF.png",width = 8, height = 6)
+ggsave("../figures/figure_x1x3_WOF.png",width = 8, height = 6)
 
 summary(lm(scale(winday_X1) ~ scale(mean5_vmu) + scale(mean5_s), df_master))
 summary(lm(scale(winday_X2) ~ scale(mean5_vmu) + scale(mean5_s), df_master))
@@ -2442,7 +2442,7 @@ ggplot(df_panas_Est_tc_diur_sum %>% filter(panas_type == "neg"), aes(x = time_id
   geom_ribbon(aes(x = time_id, ymin = mean - se, ymax = mean + se), alpha = 0.4)
 
 p1
-ggsave("./figures/figure_diurnal.png",width = 8, height = 3)
+ggsave("../figures/figure_diurnal.png",width = 8, height = 3)
 ```
 ```{r}
 df_panas_Est_tc_day_sum <- df_panas_Est_tc_diur%>% 
@@ -2471,7 +2471,7 @@ ggplot(df_panas_Est_tc_day_sum %>%
   theme(legend.position = "top")+
   plot_annotation(tag_levels = "A")
 
-ggsave("./figures/figure_diurnal.png",width = 8, height = 6)
+ggsave("../figures/figure_diurnal.png",width = 8, height = 6)
 ```
 
 #autoregression: did it show similar dependency as vmu and sd?
@@ -2514,7 +2514,7 @@ ggcorrplot::ggcorrplot(corm,
   geom_rect(aes(xmin = 10 - 0.52, xmax = 11 + 0.52, ymin = 5 - 0.52, ymax = 6 + 0.52),
               fill = NA, color = "black", size = 0.5, linetype = "dashed")
 
-ggsave("./figures/figure_allvar_corr.png",width = 6, height = 5)
+ggsave("../figures/figure_allvar_corr.png",width = 6, height = 5)
 
 ggplot(df_master, aes(y = AR_PAminusNA_sum, x = mean5_vmu_posminusneg))+
   geom_point(size = 0.5)+
@@ -2636,7 +2636,7 @@ pp/(p1+p2+
               plot_layout(heights = c(1,2,1))+
   plot_annotation(tag_levels = "A")
 
-ggsave("./figures/figure_reward_mag.png",width = 6, height =7)
+ggsave("../figures/figure_reward_mag.png",width = 6, height =7)
 
 df_prob_rate <- left_join(df_reg,df_prob %>% 
                             group_by(Participant.Public.ID,day_block) %>% 
