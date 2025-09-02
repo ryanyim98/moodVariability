@@ -74,8 +74,8 @@ AR_task <- function(df, str) {
   idx1 <- 1:(nrow(df) - 1)
   idx2 <- 2:nrow(df)
   ui <- unique(df$Prolific.Id)
-  S <- matrix(0, nrow = length(ui), ncol = length(str))
-  L <- matrix(0, nrow = length(ui), ncol = length(str))
+  S <- matrix(NA, nrow = length(ui), ncol = length(str))
+  L <- matrix(NA, nrow = length(ui), ncol = length(str))
   names <- vector("list", length = length(str))
   
   # Center data by subject
@@ -100,17 +100,20 @@ AR_task <- function(df, str) {
                    df$Prolific.Id[idx1] == df$Prolific.Id[idx2] &
                    df$Trigger.Index[idx2] == (df$Trigger.Index[idx1] + 1))
     
+  
     Xtrain <- cbind(1, df[[j]][idx1[idx]])
     Ytrain <- df[[j]][idx2[idx]]
-    
+    ui_used <- unique(df$Prolific.Id[idx1[idx]])
+      
     df_train <- data.frame(Y = Ytrain, X1 = Xtrain[, 1], X2 = Xtrain[, 2], subj = df$Prolific.Id[idx1[idx]]) #X1 is the intercept
     model <- lmer(Y ~ X2 + (X2 | subj), data = df_train)
-    
+      
     fixed_effects <- fixef(model)
-    random_effects <- ranef(model)$subj[,2]
-    params <- matrix(fixed_effects[2], nrow = length(ui), ncol = 1) + random_effects
-    
-    S[, which(c("day1_block1","day1_block2","day2_block1","day2_block2") == j)] <- params
+    random_effects <- ranef(model)$subj
+    random_effects <- random_effects %>% rownames_to_column()
+    params <- random_effects$X2 + fixed_effects
+      
+    S[ui%in%ui_used, which(c("day1_block1","day1_block2","day2_block1","day2_block2") == j)] <- params
   }
   
   # Naming the coefficients
