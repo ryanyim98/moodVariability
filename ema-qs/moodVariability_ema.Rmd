@@ -20,7 +20,7 @@ these associations, we find specificity in terms of different scales and them ma
 # library 
 ```{r warning=FALSE,message=FALSE}
 rm(list = ls())
-source(here::here("load_library.R"))
+source(here::here("../scripts/load_library.R"))
 ```
 
 ```{r warning=FALSE,message=FALSE}
@@ -37,7 +37,7 @@ rmarkdown::render("read_data_survey_ema.Rmd")
 ```
 
 ```{r warning=FALSE,message=FALSE}
-source(here::here("fit_diurnal_model.R"))
+source(here::here("../scripts/fit_diurnal_model.R"))
 
 df_lm_sum <- read_csv(paste(outdir, 'panas_lm_params.csv'))
 
