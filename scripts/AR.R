@@ -10,11 +10,11 @@ AR_PANAS <- function(df, str) {
   df <- df %>% arrange(Prolific.Id, Trigger.Index)
   
   # Initialize
-  idx1 <- 1:(nrow(df) - 1)
-  idx2 <- 2:nrow(df)
-  ui <- unique(df$Prolific.Id)
-  S <- matrix(0, nrow = length(ui), ncol = length(str))
-  L <- matrix(0, nrow = length(ui), ncol = length(str))
+  idx1 <- 1:(nrow(df) - 1) # time t (rolling)
+  idx2 <- 2:nrow(df) #time t+1
+  ui <- unique(df$Prolific.Id) #user id
+  S <- matrix(0, nrow = length(ui), ncol = length(str)) # matrix to store AR1 coefs
+  L <- matrix(0, nrow = length(ui), ncol = length(str))  # matrix to store the number of valid t → t+1 pairs
   names <- vector("list", length = length(str))
   
   # Center data by subject
@@ -29,9 +29,9 @@ AR_PANAS <- function(df, str) {
   # Identify valid indices and fit AR model
   for (j in c("PA_sum", "NA_sum","PAminusNA_sum")) {
     for (i in seq_along(ui)) {
-      idxUse <- which(!is.na(df[[j]][idx1]) & !is.na(df[[j]][idx2]) &
-                        df$Prolific.Id[idx1] == ui[i] & df$Prolific.Id[idx2] == ui[i] &
-                        df$Trigger.Index[idx2] == (df$Trigger.Index[idx1] + 1))
+      idxUse <- which(!is.na(df[[j]][idx1]) & !is.na(df[[j]][idx2]) & #both t and t+1 exist
+                        df$Prolific.Id[idx1] == ui[i] & df$Prolific.Id[idx2] == ui[i] & #same participant
+                        df$Trigger.Index[idx2] == (df$Trigger.Index[idx1] + 1)) # contiguous
       L[i, which(c("PA_sum", "NA_sum","PAminusNA_sum") == j)] <- length(idxUse)
     }
     
