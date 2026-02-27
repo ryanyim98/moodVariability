@@ -1,0 +1,330 @@
+---
+title: "revision"
+output: html_document
+date: "2026-02-07"
+---
+# robustness of parameter derivation
+## first, show how these different derivations were related
+
+## how are they correlated across days and runs? (d1r1 vs. d2r1 is the test-retest)
+```{r}
+#mu
+mu_retest<- c(cor(df_gor_Est_all$mean_mu_d1r1,df_gor_Est_all$mean_mu_d2r1),
+              cor(df_gor_Est_all$mean10_mu_d1r1,df_gor_Est_all$mean10_mu_d2r1),
+              cor(df_gor_Est_all$mean5_mu_d1r1,df_gor_Est_all$mean5_mu_d2r1),
+              cor(df_gor_Est_all$last_mu_d1r1,df_gor_Est_all$last_mu_d2r1)) %>% 
+  cbind(c("all","10_last","5_last","1_last")) %>% 
+  as.data.frame()
+names(mu_retest) <- c("value","calc")
+mu_retest$calc <- factor(mu_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
+
+#vmu
+vmu_retest<- c(cor(df_gor_Est_all$mean_vmu_d1r1,df_gor_Est_all$mean_vmu_d2r1),
+              cor(df_gor_Est_all$mean10_vmu_d1r1,df_gor_Est_all$mean10_vmu_d2r1),
+              cor(df_gor_Est_all$mean5_vmu_d1r1,df_gor_Est_all$mean5_vmu_d2r1),
+              cor(df_gor_Est_all$last_vmu_d1r1,df_gor_Est_all$last_vmu_d2r1)) %>% 
+  cbind(c("all","10_last","5_last","1_last")) %>% 
+  as.data.frame()
+names(vmu_retest) <- c("value","calc")
+vmu_retest$calc <- factor(vmu_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
+
+#mu
+s_retest<- c(cor(df_gor_Est_all$mean_s_d1r1,df_gor_Est_all$mean_s_d2r1),
+              cor(df_gor_Est_all$mean10_s_d1r1,df_gor_Est_all$mean10_s_d2r1),
+              cor(df_gor_Est_all$mean5_s_d1r1,df_gor_Est_all$mean5_s_d2r1),
+              cor(df_gor_Est_all$last_s_d1r1,df_gor_Est_all$last_s_d2r1)) %>% 
+  cbind(c("all","10_last","5_last","1_last")) %>% 
+  as.data.frame()
+names(s_retest) <- c("value","calc")
+s_retest$calc <- factor(s_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
+
+
+
+# Plot
+ggplot(mu_retest, aes(x = calc, y = as.numeric(value))) +
+  geom_point(size = 3, color = muColor) +
+  labs(x = "averaging window", y = "Test-retest reliability",
+       title = "task mu")+
+  ylim(0,1)+
+ggplot(vmu_retest, aes(x = calc, y = as.numeric(value))) +
+  ylim(0,1)+
+  geom_point(size = 3, color = vmuColor) +
+  labs(x = "averaging window", y = "Test-retest reliability",
+       title = "task volatility")+
+ggplot(s_retest, aes(x = calc, y = as.numeric(value))) +
+  ylim(0,1)+
+  geom_point(size = 3, color = noiseColor) +
+  labs(x = "averaging window", y = "Test-retest reliability",
+       title = "task noise")+
+  plot_annotation(title = "Test-retest reliability across parameterization")
+
+
+ggsave("../figures/revision/figure1.png",width = 7, height = 3)
+```
+
+## how does wof affect the parameters?
+```{r}
+df_gor_Est_long_long <- df_gor_Est_long %>% 
+  left_join(df_wof %>% rename(id= Participant.Public.ID))  %>% 
+  mutate(wof_result = ifelse(wofoutcome1 == 1 & grepl("d1",run), "win",
+                             ifelse(wofoutcome2 == 1 & grepl("d2",run), "win","loss"))) %>% 
+  pivot_longer( mean_mu:last_vmu, names_to = "measure",
+               values_to = "value")%>% 
+  mutate(group = ifelse(grepl("r1",run),"baseline",wof_result)) %>% 
+  mutate(parameter = ifelse(grepl("_mu",measure),"mu",
+                            ifelse(grepl("_vmu",measure),"vmu",
+                                   ifelse(grepl("_s",measure),"s",NA))))
+
+df_gor_Est_long_long$wof_result <- factor(df_gor_Est_long_long$wof_result,
+                                          levels = c("baseline","win","loss"))
+
+ggplot(df_gor_Est_long_long %>% filter(parameter=="mu"), 
+       aes(x = group,
+           y = value,
+           group = group,
+           color = group))+
+  stat_summary()+
+  facet_wrap(~measure, nrow = 1)
+
+summary(lmer(value~group+(1|id),df_gor_Est_long_long %>% filter(measure=="last_mu")))
+
+ggplot(df_gor_Est_long_long %>% filter(parameter=="vmu"), 
+       aes(x = group,
+           y = value,
+           group = group,
+           color = group))+
+  stat_summary()+
+  facet_wrap(~measure, nrow = 1)
+
+summary(lmer(value~group+(1|id),df_gor_Est_long_long %>% filter(measure=="last_vmu")))
+
+ggplot(df_gor_Est_long_long %>% filter(parameter=="s"), 
+       aes(x = group,
+           y = value,
+           group = group,
+           color = group))+
+  stat_summary()+
+  facet_wrap(~measure, nrow = 1)
+
+summary(lmer(value~group+(1|id),df_gor_Est_long_long %>% filter(measure=="last_s")))
+```
+
+## actually show that the key results were not biased significantly by choice of calculation
+### vmu
+```{r}
+df1<-df_master %>% 
+                    dplyr::select(last_vmu_posminusneg,mean5_vmu_posminusneg,mean10_vmu_posminusneg,mean_vmu_posminusneg,
+                           last_vmu,mean5_vmu,mean10_vmu,mean_vmu)
+
+names <-expand_grid(c("EMA_","task_"),c("last","mean5","mean10","mean"))
+for (i in 1:ncol(df1)){
+  names(df1)[i]=paste0(names[i,1],names[i,2])
+}
+# Compute correlation matrix
+cormat <- cor(df1, use = "pairwise.complete.obs")
+corpmat <- cor_pmat(df1)
+# Plot
+ggcorrplot2::ggcorrplot.mixed(cormat,p.mat = corpmat,
+           upper = "number",lower = "ellipse")+
+  labs(title = "Volatility")
+```
+
+### s
+```{r}
+df1<-df_master %>% 
+                    dplyr::select(last_s_posminusneg,mean5_s_posminusneg,mean10_s_posminusneg,mean_s_posminusneg,
+                           last_s,mean5_s,mean10_s,mean_s)
+
+names <-expand_grid(c("EMA_","task_"),c("last","mean5","mean10","mean"))
+for (i in 1:ncol(df1)){
+  names(df1)[i]=paste0(names[i,1],names[i,2])
+}
+# Compute correlation matrix
+cormat <- cor(df1, use = "pairwise.complete.obs")
+corpmat <- cor_pmat(df1)
+# Plot
+ggcorrplot2::ggcorrplot.mixed(cormat,p.mat = corpmat,
+           upper = "number",lower = "ellipse")+
+  labs(title = "Noise")
+```
+
+## show regression as well
+```{r}
+run_model <- function(prefix, outcome_type){
+
+  # outcome_type = "vmu" or "s"
+  
+  outcome <- paste0(prefix, "_", outcome_type, "_posminusneg")
+  pred_vmu <- paste0(prefix, "_vmu")
+  pred_s   <- paste0(prefix, "_s")
+  
+  form <- as.formula(
+    paste0("scale(", outcome, ") ~ scale(", pred_vmu, ") + scale(", pred_s, ")")
+  )
+  
+  mod <- lm(form, data = df_master)
+  
+  broom::tidy(mod, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    mutate(
+      prefix = prefix,
+      outcome = outcome_type,
+      predictor = case_when(
+        str_detect(term, "vmu") ~ "task volatility",
+        str_detect(term, "_s")  ~ "task noise"
+      )
+    )
+}
+
+prefixes <- c("last", "mean5", "mean10", "mean")
+
+results <- expand_grid(prefix = prefixes,
+                       outcome = c("vmu", "s")) %>%
+  pmap_dfr(~ run_model(..1, ..2))
+
+results_clean <- results %>%
+  mutate(
+    reg = case_when(
+      outcome == "vmu" ~ "ESM volatility",
+      outcome == "s"   ~ "ESM noise"
+    ),
+    sig = case_when(
+      p.value < .001 ~ "***",
+      p.value < .01  ~ "**",
+      p.value < .05  ~ "*",
+      p.value < .1   ~ "†",
+      TRUE ~ "ns"
+    ),
+    alpha = ifelse(
+      (reg == "ESM volatility" & predictor == "task volatility") |
+      (reg == "ESM noise" & predictor == "task noise"),
+      1, .3)) %>% 
+  mutate(calculation = case_when(prefix == "mean"~"all",
+                                 prefix == "mean10"~"10_last",
+                                 prefix == "mean5"~"5_last",
+                                 prefix == "last"~"1_last",
+                                 TRUE~NA),
+         calculation = factor(calculation, levels = c("all","10_last","5_last","1_last")))
+
+ggplot(results_clean,
+       aes(x = calculation,
+           y = estimate,
+           fill = predictor)) +
+  geom_col(aes(alpha = alpha),position = position_dodge(width = .5),
+           width = .4) +
+  geom_errorbar(aes(ymin = estimate- std.error,
+                    ymax = estimate+ std.error),
+                position = position_dodge(width = .5),
+                width = .15) +
+  
+  geom_text(aes(label = sig,
+                y = estimate + sign(estimate)*.15),
+            position = position_dodge(width = .5),
+            size = 4) +
+  facet_wrap(~reg, nrow = 2) +
+  scale_alpha(range = c(.3, 1), guide = "none") +
+  scale_fill_manual(values = c( noiseColor,vmuColor)) +
+  labs(y = "Standardized beta",
+       x = "Averaging window",
+       title = "Stability of Task-to-EMA Associations Across Parameterizations") +
+  
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1))+
+  ylim(-0.3,0.35)
+
+ggsave("../figures/revision/figure2.png",width = 6, height = 6)
+```
+
+
+
+# also add below when partialling out the other parameter
+
+# PANAS VAR1 model with innovation term
+
+```{r}
+
+cormat = cor(df_master %>% dplyr::select(mean_vmu_posminusneg,mean_s_posminusneg,
+                           PANAS_AR1,PANAS_VAR,
+                           mean_vmu,mean_s,
+                           TASK_AR1,TASK_VAR) %>% 
+               rename(EMA_vmu = mean_vmu_posminusneg,
+                      EMA_s = mean_s_posminusneg,
+                      TASK_vmu = mean_vmu, TASK_s=mean_s),
+             use = "pairwise.complete.obs")
+
+corpmat = cor_pmat(df_master %>% dplyr::select(mean_vmu_posminusneg,mean_s_posminusneg,
+                           PANAS_AR1,PANAS_VAR,
+                           mean_vmu,mean_s,
+                           TASK_AR1,TASK_VAR)%>% 
+               rename(EMA_vmu = mean_vmu_posminusneg,
+                      EMA_s = mean_s_posminusneg,
+                      TASK_vmu = mean_vmu, TASK_s=mean_s),
+             use = "pairwise.complete.obs")
+
+ggcorrplot2::ggcorrplot.mixed(cormat,p.mat = corpmat,
+           upper = "number",lower = "ellipse")+
+  labs(title = "Comparison with VAR1 model",
+       subtitle = "Bayesian estimates were average values")
+
+ggsave("../figures/revision/figure3.png",width = 6, height = 4)
+```
+## test-retest reliability of new measures
+```{r}
+#AR and vmu has similar test-retest
+vmu_retest
+cor(mood_results$day1_block1_AR1,mood_results$day2_block1_AR1, use = "pairwise.complete.obs")
+
+#VAR has higher test-retest
+s_retest
+cor(mood_results$day1_block1_VAR,mood_results$day2_block1_VAR, use = "pairwise.complete.obs")
+```
+
+```{r}
+
+s1 <- summary(lm(scale(PANAS_VAR) ~ scale(TASK_AR1)+ scale(TASK_VAR), df_master))
+s2 <- summary(lm(scale(PANAS_AR1) ~ scale(TASK_AR1)+ scale(TASK_VAR), df_master))
+
+bars2 <- Reduce(rbind,
+       list(as.data.frame(s1$coefficients) %>% 
+              mutate(reg = "ESM innovation"),
+            as.data.frame(s2$coefficients) %>% 
+              mutate(reg = "ESM AR"))) %>% 
+  rownames_to_column() %>% 
+  rename(variable = rowname,
+         se = `Std. Error`,
+         p_val = `Pr(>|t|)`) %>% 
+  mutate(sig = ifelse(p_val < .001, "***",
+                      ifelse(p_val < .01, "**",
+                             ifelse(p_val < .05,"*",
+                                    ifelse(p_val < .1,"†","ns")))))
+
+bars2$variable[grepl("TASK_AR1",bars2$variable)] <- "task AR"
+bars2$variable[grepl("TASK_VAR",bars2$variable)] <- "task innovation"
+
+bars2 <- bars2 %>% 
+  mutate(alpha = ifelse(grepl("AR", variable) & grepl("AR", reg), "1", 
+                               ifelse(grepl("innovation", variable) & grepl("innovation", reg), "1" ,"0")))
+
+
+ggplot(bars2 %>% 
+         filter(!grepl("Intercept",variable)) %>% 
+         mutate(variable = factor(variable, levels = c("task innovation","task AR")),
+                reg = factor(reg,levels = c("ESM innovation","ESM AR") )))+
+  geom_col(aes(x = variable, y = Estimate, fill = variable, alpha = alpha),
+           width = 0.5)+
+  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
+                width = 0.1)+
+  facet_wrap(~reg)+
+  scale_fill_manual(values = c("#66C2A5","#8DA0CB"))+
+  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
+  labs(y = "Standardized beta",
+       title = "Regression weights (multiple regression)",
+       x = "")+
+  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
+  ylim(-0.35,0.8)+
+  theme(legend.position = "none")
+```
+
+

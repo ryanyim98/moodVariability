@@ -7,7 +7,7 @@ output: html_document
 
 ## baseline questionnaires
 ```{r load data}
-indir <- '../data/raw/'
+indir <- '../data/raw/raw_csv/'
 outdir <- '../data/'
 #load initial questionnaires
 df_init <- read_csv(paste0(indir,'baseline_questionnaires.csv'))
@@ -78,6 +78,7 @@ df_PANAS <- df_PANAS %>%
   mutate(max_PAminusNA = max(PAminusNA_sum, na.rm = T),
          min_PAminusNA = min(PAminusNA_sum, na.rm = T))
 ```
+
 
 ```{r}
 #-----------init Q-----------
@@ -337,8 +338,6 @@ df_wof_react <- df_wof_react %>%
          loseday_X2 = loseday_block2_2 - loseday_block1_41 ,#- (loseday_block1_2 - loseday_block2_41)
          loseday_X3 = loseday_block2_3 - loseday_block1_41) #- (loseday_block1_3 - loseday_block2_41)
 
-df_wof_react <- df_wof_react %>% 
-  filter(Participant.Public.ID %in% df_master$Prolific.Id)
 ```
 
 
@@ -435,33 +434,21 @@ df_reg <- full_join(df_betas,df_mood_ratings,
 
 ## Bayesian model estimates
 ```{r }
+df_gor_Est_long <- read.csv(paste0(outdir,'./apple_moodrate_params.csv')) %>% 
+  filter(run %in% c("d1r1","d2r1","d1r2","d2r2")) 
+
 df_gor_Est_all <- read.csv(paste0(outdir,'./apple_moodrate_params.csv')) %>% 
   filter(run %in% c("d1r1","d2r1","d1r2","d2r2")) %>% 
-  pivot_wider(id_cols = id,names_from = run, values_from = mean_mu:mean10_vs)
+  pivot_wider(id_cols = id,names_from = run, values_from = mean_mu:last_vmu)
 
 df_gor_Est <- read.csv(paste0(outdir,'./apple_moodrate_params.csv')) %>% 
   filter(run %in% c("d1r1","d2r1")) %>%  #only take the first run each day
   ungroup() %>% 
   group_by(id) %>% 
-  summarise_at(vars(mean_mu:mean10_vs), ~mean(.x))
-
-ggplot(df_gor_Est, aes(x = mean5_s, y = mean_s))+
-  geom_point()+
-  geom_smooth(method = "lm")+
-ggplot(df_gor_Est, aes(x = mean5_vmu, y = mean5_s))+
-  geom_point()+
-  geom_smooth(method = "lm")
+  summarise_at(vars(mean_mu:last_vmu), ~mean(.x))
 
 df_panas_Est <- read.csv(paste0(outdir,'./ema_panas_params.csv')) %>% 
-  pivot_wider(names_from = panas_type, values_from = mean_mu:mean10_vs)
-
-ggplot(df_panas_Est, aes(x = mean5_s_posminusneg_hr, y = mean_s_posminusneg_hr))+
-  geom_point()+
-  geom_smooth(method = "lm")+
-
-ggplot(df_panas_Est, aes(x = mean5_s_posminusneg_hr, y = mean5_vmu_posminusneg_hr))+
-  geom_point()+
-  geom_smooth(method = "lm")
+  pivot_wider(names_from = panas_type, values_from = mean_mu:last_vmu)
 ```
 
 ```{r}
@@ -482,6 +469,8 @@ df_PANAS_mean <- df_PANAS %>%
 
 df_master <- left_join(df_init_sum,df_PANAS_mean) %>% 
   left_join(df_gor_Est %>%
+              rename(Prolific.Id = id)) %>% 
+  left_join(df_gor_Est_all %>%
               rename(Prolific.Id = id)) %>% 
   left_join(df_mood %>% 
               filter(block == 1) %>% 
@@ -667,5 +656,19 @@ df_wof <- df_wof %>%
 
 df_totalmon <- df_totalmon %>% 
   filter(Participant.Public.ID %in% df_master$Prolific.Id)
+
+df_wof_react <- df_wof_react %>% 
+  filter(Participant.Public.ID %in% df_master$Prolific.Id)
+```
+
+```{r}
+panas_results <- read.csv("~/Desktop/MoodInstability/moodVariability/data/var1_model_panas_results.csv")
+mood_results <- read.csv("~/Desktop/MoodInstability/moodVariability/data/var1_model_task_results.csv")
+
+df_master <- df_master %>%
+  left_join(panas_results, by = "Prolific.Id") %>%
+  left_join(mood_results, by = "Prolific.Id")%>% 
+  mutate(TASK_AR1 = (day1_block1_AR1 + day2_block1_AR1)/2,
+         TASK_VAR = (day1_block1_VAR + day2_block1_VAR)/2,)
 ```
 

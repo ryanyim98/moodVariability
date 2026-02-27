@@ -1,5 +1,7 @@
-load("./data/raw/bayes_model_params.mat")
-load('./data/raw/PANASPosMinNeg_modeldata_-10-10.mat');  %load the model with vmu range 1e-7~10
+clear all; clc;
+cd('/Users/yanyan/Desktop/MoodInstability/moodVariability');
+load("./data/bayes_model_params.mat")
+load('./data/PANASPosMinNeg_modeldata_-10-10.mat');  %load the model with vmu range 1e-10~10
 
 for i=1:length(Md_Inst_Struct)
     Md_Inst_Struct(i).PANASMod_POSMINNEG_largeVar=out(i);  
