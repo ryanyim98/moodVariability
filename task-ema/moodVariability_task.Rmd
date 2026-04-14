@@ -34,12 +34,13 @@ muColor <- 'forestgreen'
 
 # load and combine data
 ```{r warning=FALSE,message=FALSE}
+# source(here::here("./scripts/run_var1model.R"))
 rmarkdown::render("./read_data_task_ema.Rmd")
 source(here::here("./scripts/run_reg.R")) #X1~X3
 source(here::here("./scripts/AR.R"))#autoregressive model functions
 
 #join autoregressive PANAS
-str <- c("PA_sum", "NA_sum","PAminusNA_sum") # your strings for naming the variables
+str <- c("PA_sum", "NA_sum","PAminusNA_sum")
 result <- AR_PANAS(df_PANAS, str)
 df_AR_PANAS <- data.frame(cbind(result$S,result$ui))
 names(df_AR_PANAS) <- c(result$names,"Prolific.Id")
@@ -51,10 +52,11 @@ result <- AR_task(df_mood_AR, str)
 df_AR_task <- data.frame(cbind(result$S,result$ui))
 names(df_AR_task) <- c(result$names,"Prolific.Id")
 
-subj_exclude_novariance_ <- subj_exclude_novariance %>% 
+subj_exclude_novariance_ <- subj_exclude_novariance_rl %>% 
+  filter(day_block %in% c("day1_block1","day2_block1")) %>% 
   group_by(Participant.Public.ID) %>% 
   count() %>% 
-  filter(n==2)
+  filter(n>1) #both blocks were constant
 
 df_master <- left_join(df_master,df_AR_task,by = "Prolific.Id") %>% 
   left_join(df_AR_PANAS,by = "Prolific.Id") %>% 
@@ -66,15 +68,21 @@ demo_info <- demo_info %>%
 
 df_master[is.nan(as.matrix(df_master))] <- NA
 
-df_master <- df_master%>% 
-  mutate_at(vars(AR_PA_sum,AR_NA_sum,AR_PAminusNA_sum,
-                 AR_day1_block1,AR_day1_block2,AR_day2_block1,AR_day2_block2), ~as.numeric(.)) %>% 
-  mutate(AR_task = (AR_day1_block1 + AR_day2_block1)/2)
+df_master <- df_master %>% 
+  mutate(across(c(AR_PA_sum, AR_NA_sum, AR_PAminusNA_sum,
+                  AR_day1_block1, AR_day1_block2,
+                  AR_day2_block1, AR_day2_block2), 
+                as.numeric)) %>% 
+  mutate(AR_task = rowMeans(
+    dplyr::select(., AR_day1_block1, AR_day2_block1), 
+    na.rm = TRUE))
 
 names(df_master)
 
-sum(is.na(df_master$X1))
+df_master[(is.na(df_master$X1)),]
 ```
+
+
 # demographics
 ```{r}
 sum(is.na(demo_info$Sex))
@@ -100,6 +108,8 @@ table(demo_info$`Current Country of Residence`)
 ```
 ## the day between two runs of apple tasks
 ```{r}
+df_days <- df_days %>% filter(!Participant.Public.ID %in% 
+                                subj_exclude_novariance_$Participant.Public.ID)
 table(df_days$day_diff)
 median(df_days$day_diff)
 mean(df_days$day_diff)
@@ -170,6 +180,33 @@ chart.Correlation(df_master %>%
                     dplyr::select(X1o,X2o,X3o))
 ```
 
+### Additional analysis: model with equal coefficients per reward group (summed predictors)
+
+The authors could also have estimated a model with equal coefficients for each group of three past rewards, by summing each group of three rewards to create three new predictors. This constrains the effect of rewards 1-3, 4-6, and 7-9 to be equal within each group.
+
+```{r}
+# Summed-predictor model: binary outcome
+chart.Correlation(df_master %>% 
+                    dplyr::select(X1_sum,X2_sum,X3_sum))
+```
+
+```{r}
+l1_sum <- lmer(value ~ regression_coef + (1|Participant.Public.ID), df_Xs_scaled_sum_all_long %>%
+            mutate(regression_coef = factor(regression_coef, levels = c("X1_sum","X2_sum","X3_sum"), labels = c("trial -1~3","trial -4~6","trial -7~9"))))
+summary(l1_sum)
+round(confint(l1_sum, level=0.95),3)
+
+l_sum <- as.data.frame(effects::Effect(c("regression_coef"), l1_sum))
+p0_sum <- ggplot(data=l_sum, aes(x = regression_coef, y = fit))+
+  geom_jitter(data = df_Xs_scaled_sum_all_long %>%
+            mutate(regression_coef = factor(regression_coef, levels = c("X1_sum","X2_sum","X3_sum"), labels = c("trial -1~3","trial -4~6","trial -7~9"))),
+                   aes(x = regression_coef, y = value), size = 0.3, color = 'pink', alpha = 0.5)+
+  geom_point()+
+  geom_errorbar(data=l_sum, aes(x = regression_coef, ymin = lower, ymax = upper), width = 0.2)+
+  labs(x = "Time of affective impact", title = "Summed-predictor model (equal coefficients per group)")+
+  geom_hline(yintercept = 0, linetype = "dashed")
+p0_sum
+```
 
 ```{r}
 l1 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all_long %>% 
@@ -566,382 +603,6 @@ ggplot(df_master, aes(x = X3, y = X3mo))+
 ggsave("../figures/corr_mag.png",width = 8, height = 5)
 ```
 
-```{r}
-l1 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all2_long %>% 
-            mutate(regression_coef = factor(regression_coef,levels = c("X1mo","X2mo","X3mo"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
-             filter(!is.na(regression_coef)))
-
-summary(l1)
-
-
-l2 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all2_long %>% 
-            mutate(regression_coef = factor(regression_coef,levels = c("X1o","X2o","X3o"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
-             filter(!is.na(regression_coef)))
-
-summary(l2)
-
-# p0 <- plot_model(l1, "pred", terms = "regression_coef",
-#            show.data = F, jitter = T, dot.size = 0.7,ci.style = "bar")+
-#   labs(x = "Time of affective impact",
-#        title = "reward magnitude (-4~5)")+
-#   geom_hline(yintercept = 0, linetype = "dashed")+
-# plot_model(l2, "pred", terms = "regression_coef",
-#            show.data = F, jitter = T, dot.size = 0.7,ci.style = "bar")+
-#   labs(x = "Time of affective impact",
-#        title = "binary outcome (0 or 1)")+
-#   geom_hline(yintercept = 0, linetype = "dashed")+
-# plot_layout(nrow = 1)
-
-
-l <- as.data.frame(effects::Effect(c("regression_coef"),l1))
-l_ <- as.data.frame(effects::Effect(c("regression_coef"),l2))
-p0 <-ggplot(data=l, aes(x = regression_coef, y = fit))+
-  geom_jitter(data = df_Xs_scaled_all2_long%>% 
-            mutate(regression_coef = factor(regression_coef,levels = c("X1mo","X2mo","X3mo"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
-                     filter(!is.na(regression_coef)),
-                   aes(x = regression_coef, y = value), size = 0.3,color = 'pink',alpha = 0.5)+
-   geom_point()+
-  geom_errorbar(data=l, aes(x = regression_coef, ymin = lower, ymax = upper),
-                width = 0.2)+
-  labs(x = "Time of affective impact",
-       title = "Reward magnitude (-4~5)")+
-  geom_hline(yintercept = 0, linetype = "dashed")+
-ggplot(data=l_, aes(x = regression_coef, y = fit))+
-  geom_jitter(data = df_Xs_scaled_all2_long%>% 
-            mutate(regression_coef = factor(regression_coef,levels = c("X1o","X2o","X3o"),labels = c("trial -1~3","trial -4~6","trial -7~9")))%>% 
-                     filter(!is.na(regression_coef)),
-                   aes(x = regression_coef, y = value), size = 0.3,color = 'pink',alpha = 0.5)+
-   geom_point()+
-  geom_errorbar(data=l_, aes(x = regression_coef, ymin = lower, ymax = upper),
-                width = 0.2)+
-  labs(x = "Time of affective impact",
-       title = "Binary reward outcome (0 or 1)")+
-  geom_hline(yintercept = 0, linetype = "dashed")
-
-s1a <- summary(lm(scale(mean_mu) ~ scale(X1mo), df_master))
-s1b <- summary(lm(scale(mean_mu) ~ scale(X1mo) + scale(X2mo), df_master))
-s1c <- summary(lm(scale(mean_mu) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
-
-s2a <- summary(lm(scale(mean5_vmu) ~ scale(X1mo), df_master))
-s2b <- summary(lm(scale(mean5_vmu)  ~ scale(X1mo) + scale(X2mo), df_master))
-s2c <- summary(lm(scale(mean5_vmu) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
-
-s3a <- summary(lm(scale(mean5_s) ~ scale(X1mo), df_master))
-s3b <- summary(lm(scale(mean5_s)  ~ scale(X1mo) + scale(X2mo), df_master))
-s3c <- summary(lm(scale(mean5_s) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
-
-
-df_master$residuals1[!is.na(df_master$X1mo)] <- as.vector(residuals(s1a))
-s1bb <- summary(lm(scale(residuals1) ~ scale(X2mo), df_master))
-df_master$residuals2[!is.na(df_master$X2mo)] <- as.vector(residuals(s1bb))
-s1cc <- summary(lm(scale(residuals2) ~ scale(X3mo), df_master))
-
-df_master$residuals1[!is.na(df_master$X1mo)] <- as.vector(residuals(s2a))
-s2bb <- summary(lm(scale(residuals1) ~ scale(X2mo), df_master))
-df_master$residuals2[!is.na(df_master$X2mo)] <- as.vector(residuals(s2bb))
-s2cc <- summary(lm(scale(residuals2) ~ scale(X3mo), df_master))
-
-df_master$residuals1[!is.na(df_master$X1mo)] <- as.vector(residuals(s3a))
-s3bb <- summary(lm(scale(residuals1) ~ scale(X2mo), df_master))
-df_master$residuals2[!is.na(df_master$X2mo)] <- as.vector(residuals(s3bb))
-s3cc <- summary(lm(scale(residuals2) ~ scale(X3mo), df_master))
-
-bars <- Reduce(rbind,
-       list(as.data.frame(rbind(s1a$coefficients[2,],
-                                s1bb$coefficients[2,],
-                                s1cc$coefficients[2,]))
-                          %>% 
-              mutate(reg = "task mean"),
-            as.data.frame(rbind(s2a$coefficients[2,],
-                                s2bb$coefficients[2,],
-                                s2cc$coefficients[2,])) %>% 
-              mutate(reg = "task volatility"),
-            as.data.frame(rbind(s3a$coefficients[2,],
-                                s3bb$coefficients[2,],
-                                s3cc$coefficients[2,])) %>% 
-              mutate(reg = "task noise"))) %>% 
-  rownames_to_column() %>% 
-  rename(variable = rowname,
-         se = `Std. Error`,
-         p_val = `Pr(>|t|)`) %>% 
-  mutate(sig = ifelse(p_val < .001, "***",
-                      ifelse(p_val < .01, "**",
-                             ifelse(p_val < .05,"*",
-                                    ifelse(p_val < .1,"†","ns")))))
-
-bars$variable <- rep(c("trial -1~3","trial -4~6","trial -7~9"),3)
-
-p1mo <- ggplot(bars %>% 
-         filter(!grepl("Intercept",variable)) %>% 
-         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
-                reg = factor(reg,levels = c("task mean","task volatility","task noise") )) %>% 
-           filter(reg != "task mean"))+
-  geom_col(aes(x = variable, y = Estimate, fill = reg),
-           width = 0.5)+
-  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
-                width = 0.1)+
-  facet_wrap(~reg)+
-  scale_fill_manual(values = c(vmuColor,noiseColor))+
-  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
-  labs(y = "Standardized regression weights",
-       x = "Time of affective impact",
-       title = "Reward magnitude")+
-  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
-                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
-  theme(legend.position = "none")+
-  ylim(-0.35,0.85)+ 
-  theme(axis.text.x = element_text(angle = 45))
-
-s1a <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1mo), df_master))
-s1b <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1mo) + scale(X2mo), df_master))
-s1c <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
-
-s2a <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1mo), df_master))
-s2b <- summary(lm(scale(mean5_vmu_posminusneg)  ~ scale(X1mo) + scale(X2mo), df_master))
-s2c <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
-
-s3a <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1mo), df_master))
-s3b <- summary(lm(scale(mean5_s_posminusneg)  ~ scale(X1mo) + scale(X2mo), df_master))
-s3c <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1mo) + scale(X2mo) + scale(X3mo), df_master))
-
-
-df_master$residuals1[!is.na(df_master$X1mo)] <- as.vector(residuals(s1a))
-s1bb <- summary(lm(scale(residuals1) ~ scale(X2mo), df_master))
-df_master$residuals2[!is.na(df_master$X2mo)] <- as.vector(residuals(s1bb))
-s1cc <- summary(lm(scale(residuals2) ~ scale(X3mo), df_master))
-
-df_master$residuals1[!is.na(df_master$X1mo)] <- as.vector(residuals(s2a))
-s2bb <- summary(lm(scale(residuals1) ~ scale(X2mo), df_master))
-df_master$residuals2[!is.na(df_master$X2mo)] <- as.vector(residuals(s2bb))
-s2cc <- summary(lm(scale(residuals2) ~ scale(X3mo), df_master))
-
-df_master$residuals1[!is.na(df_master$X1mo)] <- as.vector(residuals(s3a))
-s3bb <- summary(lm(scale(residuals1) ~ scale(X2mo), df_master))
-df_master$residuals2[!is.na(df_master$X2mo)] <- as.vector(residuals(s3bb))
-s3cc <- summary(lm(scale(residuals2) ~ scale(X3mo), df_master))
-
-bars <- Reduce(rbind,
-       list(as.data.frame(rbind(s1a$coefficients[2,],
-                                s1bb$coefficients[2,],
-                                s1cc$coefficients[2,]))
-                          %>% 
-              mutate(reg = "ESM mean"),
-            as.data.frame(rbind(s2a$coefficients[2,],
-                                s2bb$coefficients[2,],
-                                s2cc$coefficients[2,])) %>% 
-              mutate(reg = "ESM volatility"),
-            as.data.frame(rbind(s3a$coefficients[2,],
-                                s3bb$coefficients[2,],
-                                s3cc$coefficients[2,])) %>% 
-              mutate(reg = "ESM noise"))) %>% 
-  rownames_to_column() %>% 
-  rename(variable = rowname,
-         se = `Std. Error`,
-         p_val = `Pr(>|t|)`) %>% 
-  mutate(sig = ifelse(p_val < .001, "***",
-                      ifelse(p_val < .01, "**",
-                             ifelse(p_val < .05,"*",
-                                    ifelse(p_val < .1,"†","ns")))))
-
-bars$variable <- rep(c("trial -1~3","trial -4~6","trial -7~9"),3)
-
-p2mo <- ggplot(bars %>% 
-         filter(!grepl("Intercept",variable)) %>% 
-         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
-                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )) %>% 
-           filter(reg != "ESM mean"))+
-  geom_col(aes(x = variable, y = Estimate, fill = reg),
-           width = 0.5)+
-  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
-                width = 0.1)+
-  facet_wrap(~reg)+
-  scale_fill_manual(values = c(vmuColor,noiseColor))+
-  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
-  labs(y = "Standardized regression weights",
-       x = "Time of affective impact",
-       title = "Reward magnitude")+
-  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
-                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
-  theme(legend.position = "none")+
-  ylim(-0.35,0.85)+ 
-  theme(axis.text.x = element_text(angle = 45))
-
-p1mo/p2mo
-
-p0
-ggsave("../figures/figure_mag_out_dist.png",width = 6, height = 3)
-```
-
-```{r}
-l1 <- lmer(value ~ regression_coef + (1|Participant.Public.ID),df_Xs_scaled_all2_long %>% 
-            mutate(regression_coef = factor(regression_coef,levels = c("X1o","X2o","X3o"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
-             filter(!is.na(regression_coef)))
-
-summary(l1)
-
-p0 <- plot_model(l1, "pred",terms = "regression_coef",
-           show.data = T, jitter = T, dot.size = 0.7,ci.style = "bar")+
-  labs(x = "Time of affective impact",
-       title = "binary outcome")+
-  geom_hline(yintercept = 0, linetype = "dashed")
-
-s1a <- summary(lm(scale(mean_mu) ~ scale(X1o), df_master))
-s1b <- summary(lm(scale(mean_mu) ~ scale(X1o) + scale(X2o), df_master))
-s1c <- summary(lm(scale(mean_mu) ~ scale(X1o) + scale(X2o) + scale(X3mo), df_master))
-
-s2a <- summary(lm(scale(mean5_vmu) ~ scale(X1o), df_master))
-s2b <- summary(lm(scale(mean5_vmu)  ~ scale(X1o) + scale(X2o), df_master))
-s2c <- summary(lm(scale(mean5_vmu) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
-
-s3a <- summary(lm(scale(mean5_s) ~ scale(X1o), df_master))
-s3b <- summary(lm(scale(mean5_s)  ~ scale(X1o) + scale(X2o), df_master))
-s3c <- summary(lm(scale(mean5_s) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
-
-df_master$residuals1[!is.na(df_master$X1o)] <- as.vector(residuals(s1a))
-s1bb <- summary(lm(scale(residuals1) ~ scale(X2o), df_master))
-df_master$residuals2[!is.na(df_master$X2o)] <- as.vector(residuals(s1bb))
-s1cc <- summary(lm(scale(residuals2) ~ scale(X3o), df_master))
-
-df_master$residuals1[!is.na(df_master$X1o)] <- as.vector(residuals(s2a))
-s2bb <- summary(lm(scale(residuals1) ~ scale(X2o), df_master))
-df_master$residuals2[!is.na(df_master$X2o)] <- as.vector(residuals(s2bb))
-s2cc <- summary(lm(scale(residuals2) ~ scale(X3o), df_master))
-
-df_master$residuals1[!is.na(df_master$X1o)] <- as.vector(residuals(s3a))
-s3bb <- summary(lm(scale(residuals1) ~ scale(X2o), df_master))
-df_master$residuals2[!is.na(df_master$X2o)] <- as.vector(residuals(s3bb))
-s3cc <- summary(lm(scale(residuals2) ~ scale(X3o), df_master))
-
-bars <- Reduce(rbind,
-       list(as.data.frame(rbind(s1a$coefficients[2,],
-                                s1bb$coefficients[2,],
-                                s1cc$coefficients[2,]))
-                          %>% 
-              mutate(reg = "task mean"),
-            as.data.frame(rbind(s2a$coefficients[2,],
-                                s2bb$coefficients[2,],
-                                s2cc$coefficients[2,])) %>% 
-              mutate(reg = "task volatility"),
-            as.data.frame(rbind(s3a$coefficients[2,],
-                                s3bb$coefficients[2,],
-                                s3cc$coefficients[2,])) %>% 
-              mutate(reg = "task noise"))) %>% 
-  rownames_to_column() %>% 
-  rename(variable = rowname,
-         se = `Std. Error`,
-         p_val = `Pr(>|t|)`) %>% 
-  mutate(sig = ifelse(p_val < .001, "***",
-                      ifelse(p_val < .01, "**",
-                             ifelse(p_val < .05,"*",
-                                    ifelse(p_val < .1,"†","ns")))))
-
-bars$variable <- rep(c("trial -1~3","trial -4~6","trial -7~9"),3)
-
-p1o <- ggplot(bars %>% 
-         filter(!grepl("Intercept",variable)) %>% 
-         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
-                reg = factor(reg,levels = c("task mean","task volatility","task noise") )) %>% 
-           filter(reg != "task mean"))+
-  geom_col(aes(x = variable, y = Estimate, fill = reg),
-           width = 0.5)+
-  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
-                width = 0.1)+
-  facet_wrap(~reg)+
-  scale_fill_manual(values = c(vmuColor,noiseColor))+
-  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
-  labs(y = "Standardized regression weights",
-       x = "Time of affective impact",
-       title = "Reward outcome")+
-  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
-                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
-  theme(legend.position = "none")+
-  ylim(-0.35,0.85)+ 
-  theme(axis.text.x = element_text(angle = 45))
-
-
-s1a <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1o), df_master))
-s1b <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1o) + scale(X2o), df_master))
-s1c <- summary(lm(scale(mean_mu_posminusneg) ~ scale(X1o) + scale(X2o) + scale(X3mo), df_master))
-
-s2a <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1o), df_master))
-s2b <- summary(lm(scale(mean5_vmu_posminusneg)  ~ scale(X1o) + scale(X2o), df_master))
-s2c <- summary(lm(scale(mean5_vmu_posminusneg) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
-
-s3a <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1o), df_master))
-s3b <- summary(lm(scale(mean5_s_posminusneg)  ~ scale(X1o) + scale(X2o), df_master))
-s3c <- summary(lm(scale(mean5_s_posminusneg) ~ scale(X1o) + scale(X2o) + scale(X3o), df_master))
-
-
-df_master$residuals1[!is.na(df_master$X1o)] <- as.vector(residuals(s1a))
-s1bb <- summary(lm(scale(residuals1) ~ scale(X2o), df_master))
-df_master$residuals2[!is.na(df_master$X2o)] <- as.vector(residuals(s1bb))
-s1cc <- summary(lm(scale(residuals2) ~ scale(X3o), df_master))
-
-df_master$residuals1[!is.na(df_master$X1o)] <- as.vector(residuals(s2a))
-s2bb <- summary(lm(scale(residuals1) ~ scale(X2o), df_master))
-df_master$residuals2[!is.na(df_master$X2o)] <- as.vector(residuals(s2bb))
-s2cc <- summary(lm(scale(residuals2) ~ scale(X3o), df_master))
-
-df_master$residuals1[!is.na(df_master$X1o)] <- as.vector(residuals(s3a))
-s3bb <- summary(lm(scale(residuals1) ~ scale(X2o), df_master))
-df_master$residuals2[!is.na(df_master$X2o)] <- as.vector(residuals(s3bb))
-s3cc <- summary(lm(scale(residuals2) ~ scale(X3o), df_master))
-
-bars <- Reduce(rbind,
-       list(as.data.frame(rbind(s1a$coefficients[2,],
-                                s1bb$coefficients[2,],
-                                s1cc$coefficients[2,]))
-                          %>% 
-              mutate(reg = "ESM mean"),
-            as.data.frame(rbind(s2a$coefficients[2,],
-                                s2bb$coefficients[2,],
-                                s2cc$coefficients[2,])) %>% 
-              mutate(reg = "ESM volatility"),
-            as.data.frame(rbind(s3a$coefficients[2,],
-                                s3bb$coefficients[2,],
-                                s3cc$coefficients[2,])) %>% 
-              mutate(reg = "ESM noise"))) %>% 
-  rownames_to_column() %>% 
-  rename(variable = rowname,
-         se = `Std. Error`,
-         p_val = `Pr(>|t|)`) %>% 
-  mutate(sig = ifelse(p_val < .001, "***",
-                      ifelse(p_val < .01, "**",
-                             ifelse(p_val < .05,"*",
-                                    ifelse(p_val < .1,"†","ns")))))
-
-bars$variable <- rep(c("trial -1~3","trial -4~6","trial -7~9"),3)
-
-p2o <- ggplot(bars %>% 
-         filter(!grepl("Intercept",variable)) %>% 
-         mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
-                reg = factor(reg,levels = c("ESM mean","ESM volatility","ESM noise") )) %>% 
-           filter(reg != "ESM mean"))+
-  geom_col(aes(x = variable, y = Estimate, fill = reg),
-           width = 0.5)+
-  geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
-                width = 0.1)+
-  facet_wrap(~reg)+
-  scale_fill_manual(values = c(vmuColor,noiseColor))+
-  scale_alpha_manual(values = c("1" = 1, "0" = 0.5), guide = "none")+
-  labs(y = "Standardized regression weights",
-       x = "Time of affective impact",
-       title = "Reward outcome")+
-  geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  
-                                   + (Estimate) / abs(Estimate) * 0.05), label = sig))+
-  theme(legend.position = "none")+
-  ylim(-0.35,0.85)+ 
-  theme(axis.text.x = element_text(angle = 45))
-
-p1o/p2o
-(p1o+p1mo+p2o+p2mo)+
-  plot_annotation(tag_levels = "A")+
-  plot_layout(nrow = 2)
-
-
-ggsave("../figures/figure_x1x3_mag_out.png",width = 8, height = 7)
-```
-
 
 <!-- ```{r} -->
 <!-- s1 <- summary(lm(scale(mean_mu_posminusneg_hr) ~ scale(X1) + scale(X2) + scale(X3), df_master)) -->
@@ -1066,7 +727,7 @@ ggplot(df_master, aes(x = mean_mu_d1r1, y = mean_mu_d2r1))+
 p2
 ggsave("../figures/figure_reliability_supp.png",width = 8, height = 3)
 
-ggplot(df_master, aes(x = moodrate_se_day1_block1, y = moodrate_se_day2_block1))+
+ggplot(df_master, aes(x = moodrate_sd_day1_block1, y = moodrate_sd_day2_block1))+
   geom_point(size = 0.5)+
   geom_smooth(method = "lm") +
   stat_poly_eq(use_label(c("R2","p")))+
@@ -1100,12 +761,12 @@ df_gor_Est_tc_sum_mean <- df_gor_Est_tc_sum%>%
   summarise_at(vars(mu_orig,vmu,SD), ~mean(.x,na.rm = T)) %>% 
   pivot_longer(c(mu_orig,vmu,SD), names_to = "parameter", values_to = "mean")
 
-df_gor_Est_tc_sum_se <- df_gor_Est_tc_sum%>% 
+df_gor_Est_tc_sum_sd <- df_gor_Est_tc_sum%>% 
   group_by(run,trial_id) %>% 
-  summarise_at(vars(mu_orig,vmu,SD), ~sd(.x,na.rm = T)/sqrt(n())) %>% 
-  pivot_longer(c(mu_orig,vmu,SD), names_to = "parameter", values_to = "se")
+  summarise_at(vars(mu_orig,vmu,SD), ~sd(.x,na.rm = T)) %>% 
+  pivot_longer(c(mu_orig,vmu,SD), names_to = "parameter", values_to = "sd")
 
-df_gor_Est_tc_sum <- left_join(df_gor_Est_tc_sum_mean,df_gor_Est_tc_sum_se) %>% 
+df_gor_Est_tc_sum <- left_join(df_gor_Est_tc_sum_mean,df_gor_Est_tc_sum_sd) %>% 
   mutate(run = ifelse(run == "d1r1","day 1","day 2"),
          trial_id = trial_id - 1)
 
@@ -1130,7 +791,7 @@ p3b <- ggplot(data = df_gor_Est_tc_sum %>% filter(parameter == "mu (original spa
              aes(x = trial_id, y = moodrate, shape = run, fill = run),
              size = 0.005,alpha = 0.1, width = 0.2, height = 0.1)+
   geom_line(linewidth = 1)+
-  geom_ribbon(aes(x = trial_id, ymin = mean-se, ymax = mean+se,fill = run),
+  geom_ribbon(aes(x = trial_id, ymin = mean-sd, ymax = mean+sd,fill = run),
               alpha = 0.3, color = NA)+
   labs(title = "task mood rating parameters",
        y = "parameter values")+
@@ -1160,12 +821,12 @@ df_panas_Est_tc_sum_mean <- df_panas_Est_tc_sum%>%
   summarise_at(vars(mu_orig,vmu,SD), ~mean(.x,na.rm = T)) %>% 
   pivot_longer(c(mu_orig,vmu,SD), names_to = "parameter", values_to = "mean")
 
-df_panas_Est_tc_sum_se <- df_panas_Est_tc_sum%>% 
+df_panas_Est_tc_sum_sd <- df_panas_Est_tc_sum%>% 
   group_by(panas_type,sample_point) %>% 
-  summarise_at(vars(mu_orig,vmu,SD), ~sd(.x,na.rm = T)/sqrt(n())) %>% 
-  pivot_longer(c(mu_orig,vmu,SD), names_to = "parameter", values_to = "se")
+  summarise_at(vars(mu_orig,vmu,SD), ~sd(.x,na.rm = T)) %>% 
+  pivot_longer(c(mu_orig,vmu,SD), names_to = "parameter", values_to = "sd")
 
-df_panas_Est_tc_sum <- left_join(df_panas_Est_tc_sum_mean,df_panas_Est_tc_sum_se) %>% 
+df_panas_Est_tc_sum <- left_join(df_panas_Est_tc_sum_mean,df_panas_Est_tc_sum_sd) %>% 
   mutate(sample_point = sample_point - 1)
 
 df_panas_Est_tc_sum$parameter <- factor(df_panas_Est_tc_sum$parameter, levels = c('mu_orig', 'vmu', 'SD'),
@@ -1216,7 +877,7 @@ summary(lm(scale(mean5_vmu_d1r1)~scale(mean5_vmu_d2r1),df_master))
 summary(lm(scale(mean5_s_d1r1)~scale(mean5_s_d2r1),df_master))
 
 summary(lm(scale(moodrate_mssd_day1_block1)~scale(moodrate_mssd_day2_block1),df_master))
-summary(lm(scale(moodrate_se_day1_block1)~scale(moodrate_se_day2_block1),df_master))
+summary(lm(scale(moodrate_sd_day1_block1)~scale(moodrate_sd_day2_block1),df_master))
 summary(lm(scale(AR_day1_block1)~scale(AR_day2_block1),df_master))
 
 t.test(df_master$mean_mu_d1r1, df_master$mean_mu_d2r1, paired = T)
@@ -1521,7 +1182,7 @@ bars2$variable[grepl("moodrate_mssd",bars2$variable)] <- "task RMSSD"
 bars2$variable[grepl("AR_task",bars2$variable)] <- "task AR"
 
 bars2 <- bars2 %>% 
-  mutate(alpha = ifelse(grepl("SE", variable) & grepl("SE", reg), "1", 
+  mutate(alpha = ifelse(grepl("SD", variable) & grepl("SD", reg), "1", 
                         ifelse(grepl("RMSSD", variable) & grepl("RMSSD", reg), "1" ,
                                ifelse(grepl("AR", variable) & grepl("AR", reg), "1" ,"0"))))
 
@@ -1544,8 +1205,8 @@ p1 <- ggplot(bars2 %>%
   ylim(-0.35,0.8)+
   theme(legend.position = "none")
 
-s1 <- summary(lm(scale(PAminusNA_se) ~ scale(moodrate_se)+ scale(AR_task), df_master))
-s2 <- summary(lm(scale(AR_PAminusNA_sum) ~ scale(moodrate_se)+ scale(AR_task), df_master))
+s1 <- summary(lm(scale(PAminusNA_sd) ~ scale(moodrate_sd)+ scale(AR_task), df_master))
+s2 <- summary(lm(scale(AR_PAminusNA_sum) ~ scale(moodrate_sd)+ scale(AR_task), df_master))
 
 bars2 <- Reduce(rbind,
        list(as.data.frame(s1$coefficients) %>% 
@@ -1561,11 +1222,11 @@ bars2 <- Reduce(rbind,
                              ifelse(p_val < .05,"*",
                                     ifelse(p_val < .1,"†","ns")))))
 
-bars2$variable[grepl("moodrate_se",bars2$variable)] <- "task SE"
+bars2$variable[grepl("moodrate_sd",bars2$variable)] <- "task SE"
 bars2$variable[grepl("AR_task",bars2$variable)] <- "task AR"
 
 bars2 <- bars2 %>% 
-  mutate(alpha = ifelse(grepl("SE", variable) & grepl("SE", reg), "1", 
+  mutate(alpha = ifelse(grepl("SD", variable) & grepl("SD", reg), "1", 
                         ifelse(grepl("RMSSD", variable) & grepl("RMSSD", reg), "1" ,
                                ifelse(grepl("AR", variable) & grepl("AR", reg), "1" ,"0"))))
 
@@ -1588,9 +1249,9 @@ p1b <- ggplot(bars2 %>%
   ylim(-0.35,0.8)+
   theme(legend.position = "none")
 
-s1 <- summary(lm(scale(PAminusNA_se) ~ scale(moodrate_se) + scale(moodrate_mssd)+ scale(AR_task), df_master))
-s2 <- summary(lm(scale(PAminusNA_mssd) ~ scale(moodrate_se) + scale(moodrate_mssd)+ scale(AR_task), df_master))
-s3 <- summary(lm(scale(AR_PAminusNA_sum) ~ scale(moodrate_se) + scale(moodrate_mssd)+ scale(AR_task), df_master))
+s1 <- summary(lm(scale(PAminusNA_sd) ~ scale(moodrate_sd) + scale(moodrate_mssd)+ scale(AR_task), df_master))
+s2 <- summary(lm(scale(PAminusNA_mssd) ~ scale(moodrate_sd) + scale(moodrate_mssd)+ scale(AR_task), df_master))
+s3 <- summary(lm(scale(AR_PAminusNA_sum) ~ scale(moodrate_sd) + scale(moodrate_mssd)+ scale(AR_task), df_master))
 
 bars2 <- Reduce(rbind,
        list(as.data.frame(s1$coefficients) %>% 
@@ -1608,12 +1269,12 @@ bars2 <- Reduce(rbind,
                              ifelse(p_val < .05,"*",
                                     ifelse(p_val < .1,"†","ns")))))
 
-bars2$variable[grepl("moodrate_se",bars2$variable)] <- "task SE"
+bars2$variable[grepl("moodrate_sd",bars2$variable)] <- "task SE"
 bars2$variable[grepl("moodrate_mssd",bars2$variable)] <- "task RMSSD"
 bars2$variable[grepl("AR_task",bars2$variable)] <- "task AR"
 
 bars2 <- bars2 %>% 
-  mutate(alpha = ifelse(grepl("SE", variable) & grepl("SE", reg), "1", 
+  mutate(alpha = ifelse(grepl("SD", variable) & grepl("SD", reg), "1", 
                         ifelse(grepl("RMSSD", variable) & grepl("RMSSD", reg), "1" ,
                                ifelse(grepl("AR", variable) & grepl("AR", reg), "1" ,"0"))))
 
@@ -1639,7 +1300,7 @@ p2 <- ggplot(bars2 %>%
 
 
 
-s1 <- summary(lm(scale(PAminusNA_se) ~ scale(moodrate_se) , df_master))
+s1 <- summary(lm(scale(PAminusNA_sd) ~ scale(moodrate_sd) , df_master))
 s2 <- summary(lm(scale(PAminusNA_mssd) ~ scale(moodrate_mssd), df_master))
 s3 <- summary(lm(scale(AR_PAminusNA_sum) ~ scale(AR_task), df_master))
 
@@ -1659,12 +1320,12 @@ bars2 <- Reduce(rbind,
                              ifelse(p_val < .05,"*",
                                     ifelse(p_val < .1,"†","ns")))))
 
-bars2$variable[grepl("moodrate_se",bars2$variable)] <- "task SE"
+bars2$variable[grepl("moodrate_sd",bars2$variable)] <- "task SE"
 bars2$variable[grepl("moodrate_mssd",bars2$variable)] <- "task RMSSD"
 bars2$variable[grepl("AR_task",bars2$variable)] <- "task AR"
 
 bars2 <- bars2 %>% 
-  mutate(alpha = ifelse(grepl("SE", variable) & grepl("SE", reg), "1", 
+  mutate(alpha = ifelse(grepl("SD", variable) & grepl("SD", reg), "1", 
                         ifelse(grepl("RMSSD", variable) & grepl("RMSSD", reg), "1" ,
                                ifelse(grepl("AR", variable) & grepl("AR", reg), "1" ,"0"))))
 
@@ -1705,8 +1366,8 @@ summary(l2<-lm(scale(PAminusNA_mean) ~ scale(mean_mu_posminusneg) + scale(mean5_
 summary(l3<-lm(scale(moodrate_mssd) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean_s),df_master))
 summary(l4<-lm(scale(PAminusNA_mssd) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean_s_posminusneg),df_master))
 
-summary(l5<-lm(scale(moodrate_se) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean_s),df_master))
-summary(l6<-lm(scale(PAminusNA_se) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean_s_posminusneg),df_master))
+summary(l5<-lm(scale(moodrate_sd) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean_s),df_master))
+summary(l6<-lm(scale(PAminusNA_sd) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean_s_posminusneg),df_master))
 
 summary(l7<-lm(scale(AR_task) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean_s),df_master))
 summary(l8<-lm(scale(AR_PAminusNA_sum) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean_s_posminusneg),df_master))
@@ -1757,9 +1418,9 @@ summary(lm(scale(moodrate_mean) ~  scale(X1),df_master))
 summary(lm(scale(moodrate_mean) ~  scale(X1) + scale(X2),df_master))
 summary(lm(scale(moodrate_mean) ~  scale(X1) + scale(X2) + scale(X3),df_master))
 
-summary(lm(scale(moodrate_se) ~  scale(X1),df_master))
-summary(lm(scale(moodrate_se) ~  scale(X1) + scale(X2),df_master))
-summary(lm(scale(moodrate_se) ~  scale(X1) + scale(X2) + scale(X3),df_master))
+summary(lm(scale(moodrate_sd) ~  scale(X1),df_master))
+summary(lm(scale(moodrate_sd) ~  scale(X1) + scale(X2),df_master))
+summary(lm(scale(moodrate_sd) ~  scale(X1) + scale(X2) + scale(X3),df_master))
 
 summary(lm(scale(moodrate_mssd) ~  scale(X1),df_master))
 summary(lm(scale(moodrate_mssd) ~  scale(X1) + scale(X2),df_master))
@@ -1781,9 +1442,9 @@ summary(lm(scale(AR_task) ~  scale(X1o) + scale(X2o) + scale(X3o),df_master))
 ### make supp fig
 
 ```{r}
-s1a <- summary(lm(scale(moodrate_se) ~ scale(X1), df_master))
-s1b <- summary(lm(scale(moodrate_se) ~ scale(X1) + scale(X2), df_master))
-s1c <- summary(lm(scale(moodrate_se) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+s1a <- summary(lm(scale(moodrate_sd) ~ scale(X1), df_master))
+s1b <- summary(lm(scale(moodrate_sd) ~ scale(X1) + scale(X2), df_master))
+s1c <- summary(lm(scale(moodrate_sd) ~ scale(X1) + scale(X2) + scale(X3), df_master))
 
 s2a <- summary(lm(scale(AR_task) ~ scale(X1), df_master))
 s2b <- summary(lm(scale(AR_task)  ~ scale(X1) + scale(X2), df_master))
@@ -1856,9 +1517,9 @@ p1 <- ggplot(bars %>%
   theme(axis.text.x = element_text(angle = 45,hjust=1))
 
 
-s1a <- summary(lm(scale(PAminusNA_se) ~ scale(X1), df_master))
-s1b <- summary(lm(scale(PAminusNA_se) ~ scale(X1) + scale(X2), df_master))
-s1c <- summary(lm(scale(PAminusNA_se) ~ scale(X1) + scale(X2) + scale(X3), df_master))
+s1a <- summary(lm(scale(PAminusNA_sd) ~ scale(X1), df_master))
+s1b <- summary(lm(scale(PAminusNA_sd) ~ scale(X1) + scale(X2), df_master))
+s1c <- summary(lm(scale(PAminusNA_sd) ~ scale(X1) + scale(X2) + scale(X3), df_master))
 
 s2a <- summary(lm(scale(AR_PAminusNA_sum) ~ scale(X1), df_master))
 s2b <- summary(lm(scale(AR_PAminusNA_sum)  ~ scale(X1) + scale(X2), df_master))
@@ -1932,10 +1593,33 @@ p2 <- ggplot(bars %>%
 
 p1/p2
 
-ggsave("../figures/figure_x1x3_se_mssd_ar.png",width = 6, height = 7)
+ggsave("../figures/figure_x1x3_sd_mssd_ar.png",width = 6, height = 7)
 ```
 
-## 2.2 Task params and baseline questionnaires (paper 1 or 2?)
+## 2.2 Task params and baseline questionnaires
+```{r}
+df_corr <- df_master %>% 
+                    ungroup() %>% 
+                    dplyr::select(TEPS_sum,HPS_sum,CESD_sum,STAI_TA_sum,STAI_SA_sum,
+                                  PAminusNA_mean,PAminusNA_sd,PAminusNA_mssd,AR_PAminusNA_sum,
+                                  mean5_vmu_posminusneg,mean5_s_posminusneg,
+                                  moodrate_mean,moodrate_sd,moodrate_mssd,AR_task,mean5_vmu,mean5_s) %>% 
+  rename(`ESM mean` = PAminusNA_mean,`ESM AR` = AR_PAminusNA_sum, `ESM rmssd` = PAminusNA_mssd,`ESM se`=PAminusNA_sd,
+         `ESM vmu` = mean5_vmu_posminusneg, `ESM sd` = mean5_s_posminusneg,
+         `task mean` = moodrate_mean,`task AR`= AR_task,`task rmssd` = moodrate_mssd,`task se` = moodrate_sd, `task vmu` = mean5_vmu,
+         `task sd`= mean5_s) %>% 
+  drop_na()
+
+corm <- cor(df_corr,
+            method = "pearson", use = "complete.obs")
+
+p.mat <- cor_pmat(df_corr,
+            method = "pearson", use = "complete.obs")
+
+ggcorrplot::ggcorrplot(corm, 
+           p.mat = p.mat, lab = T, insig = "blank", type = "lower",tl.cex = 10,lab_size = 3,
+           colors = c("skyblue", "white", "orange"))
+```
 
 ### TEPS is positively associated with task SD. However, considering from section 1.3 that task SD is associated with EMA mu, we want to control for EMA mu. After controlling, the correlation is still significant at p < .05.
 ### 1.2.3 Dependency of baseline questionnaire on emotional reactivity
@@ -1970,7 +1654,7 @@ bars$variable[grepl("X3",bars$variable)] <- "trial -7~9"
 p1 <- ggplot(bars %>% 
          filter(!grepl("Intercept",variable)) %>% 
          mutate(variable = factor(variable, levels = c("trial -1~3","trial -4~6","trial -7~9")),
-                reg = factor(reg,levels = c("TEPS","HPS","Trait NA") )))+
+                reg = factor(reg,levels = c("TEPS","HPS","CESD_sum") )))+
   geom_col(aes(x = variable, y = Estimate, fill = variable),
            width = 0.5)+
   geom_errorbar(aes(x = variable, ymin = Estimate - se, ymax = Estimate + se),
@@ -1987,11 +1671,11 @@ p1 <- ggplot(bars %>%
 
 
 ```{r fig.width= 15, fig.height=4}
-s1 <- summary(lm(scale(TEPS_sum) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+s1 <- summary(lm(scale(TEPS_sum) ~ scale(mean5_vmu) + scale(mean5_s), df_master))
 
-s2 <- summary(lm(scale(HPS_sum) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+s2 <- summary(lm(scale(HPS_sum) ~ scale(mean5_vmu) + scale(mean5_s), df_master))
 
-s3 <- summary(lm(scale(CESD_sum) ~ scale(mean_mu) + scale(mean5_vmu) + scale(mean5_s), df_master))
+s3 <- summary(lm(scale(CESD_sum) ~ scale(mean5_vmu) + scale(mean5_s), df_master))
 
 bars <- Reduce(rbind,
        list(as.data.frame(s1$coefficients) %>% 
@@ -2031,11 +1715,11 @@ p2 <- ggplot(bars %>%
 ```
 
 ```{r}
-s1 <- summary(lm(scale(TEPS_sum) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+s1 <- summary(lm(scale(TEPS_sum) ~  scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
 
-s2 <- summary(lm(scale(HPS_sum) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+s2 <- summary(lm(scale(HPS_sum) ~  scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
 
-s3 <- summary(lm(scale(CESD_sum) ~ scale(mean_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
+s3 <- summary(lm(scale(CESD_sum) ~ scale(mean5_vmu_posminusneg) + scale(mean5_s_posminusneg), df_master))
 
 bars <- Reduce(rbind,
        list(as.data.frame(s1$coefficients) %>% 
@@ -2072,9 +1756,9 @@ p3 <- ggplot(bars %>%
   geom_text(aes(x = variable, y = (Estimate + (Estimate) / abs(Estimate) * se  + (Estimate) / abs(Estimate) * 0.05), label = sig))+
   theme(legend.position = "none")
 
-p3+p1+p2+plot_layout(nrow =3)+
+p3+p2+plot_layout(nrow =3)+
   plot_annotation(tag_levels = "A")
-ggsave("../figures/figure_x1x3_qs.png",width = 8, height = 12)
+ggsave("../figures/figure_x1x3_qs.png",width = 8, height = 8)
 ```
 
 
@@ -2491,13 +2175,12 @@ ggsave("../figures/figure_diurnal.png",width = 8, height = 6)
 ```{r}
 df_corr <- df_master %>% 
                     ungroup() %>% 
-                    drop_na() %>% 
-                    dplyr::select(PAminusNA_mean,PAminusNA_se,PAminusNA_mssd,AR_PAminusNA_sum,
+                    dplyr::select(PAminusNA_mean,PAminusNA_sd,PAminusNA_mssd,AR_PAminusNA_sum,
                                   mean5_vmu_posminusneg,mean5_s_posminusneg,
-                                  moodrate_mean,moodrate_se,moodrate_mssd,AR_task,mean5_vmu,mean5_s) %>% 
-  rename(`ESM mean` = PAminusNA_mean,`ESM AR` = AR_PAminusNA_sum, `ESM rmssd` = PAminusNA_mssd,`ESM se`=PAminusNA_se,
+                                  moodrate_mean,moodrate_sd,moodrate_mssd,AR_task,mean5_vmu,mean5_s) %>% 
+  rename(`ESM mean` = PAminusNA_mean,`ESM AR` = AR_PAminusNA_sum, `ESM rmssd` = PAminusNA_mssd,`ESM se`=PAminusNA_sd,
          `ESM vmu` = mean5_vmu_posminusneg, `ESM sd` = mean5_s_posminusneg,
-         `task mean` = moodrate_mean,`task AR`= AR_task,`task rmssd` = moodrate_mssd,`task se` = moodrate_se, `task vmu` = mean5_vmu,
+         `task mean` = moodrate_mean,`task AR`= AR_task,`task rmssd` = moodrate_mssd,`task se` = moodrate_sd, `task vmu` = mean5_vmu,
          `task sd`= mean5_s)
 
 chart.Correlation(df_corr)
@@ -2560,27 +2243,70 @@ chart.Correlation(df_master %>%
                     ungroup() %>% 
                     drop_na() %>% 
                     dplyr::select(HPS_sum,TEPS_sum,CESD_sum,PA_NA_corr,
-                                  PAminusNA_mean,AR_PAminusNA_sum,PAminusNA_mssd,PAminusNA_se,
+                                  PAminusNA_mean,AR_PAminusNA_sum,PAminusNA_mssd,PAminusNA_sd,
                                   mean5_vmu_posminusneg,mean5_s_posminusneg,
-                                  moodrate_mean,AR_task,moodrate_mssd,moodrate_se,mean5_vmu,mean5_s,X1:X3) %>% 
-  rename(`ESM mean` = PAminusNA_mean,`ESM AR` = AR_PAminusNA_sum, `ESM rmssd` = PAminusNA_mssd,`ESM se`=PAminusNA_se,
+                                  moodrate_mean,AR_task,moodrate_mssd,moodrate_sd,mean5_vmu,mean5_s,X1:X3) %>% 
+  rename(`ESM mean` = PAminusNA_mean,`ESM AR` = AR_PAminusNA_sum, `ESM rmssd` = PAminusNA_mssd,`ESM se`=PAminusNA_sd,
          `ESM vmu` = mean5_vmu_posminusneg, `ESM s` = mean5_s_posminusneg,
-         `task mean` = moodrate_mean,`task AR`= AR_task,`task rmssd` = moodrate_mssd,`task se` = moodrate_se, `task vmu` = mean5_vmu,
+         `task mean` = moodrate_mean,`task AR`= AR_task,`task rmssd` = moodrate_mssd,`task se` = moodrate_sd, `task vmu` = mean5_vmu,
          `task s`= mean5_s))
 ```
 
 
 # how did people perform, and how effective is the task in inducing affect?
+## simulate some participants with a random strategy
 ```{r}
+df_reward_sched <- df_d1b1 %>% 
+  dplyr::select(Trial.Index,tree1info,tree2info,
+                tree1mag,tree2mag) %>% 
+  filter(!is.na(tree1info))%>% 
+  unique()
+
+write_csv(df_reward_sched,"../data/for_share/reward_sched.csv")
+
+# simulated agents: random choices and totalmon from df_reward_sched (mag = apples, info = reward presence; 0.25 pts per apple)
+set.seed(42)
+n_agents <- 100
+df_agents <- df_reward_sched %>%
+  mutate(tree1info = as.numeric(as.character(tree1info)),
+         tree2info = as.numeric(as.character(tree2info)),
+         tree1mag = as.numeric(as.character(tree1mag)),
+         tree2mag = as.numeric(as.character(tree2mag))) %>%
+  slice(rep(1:n(), each = n_agents)) %>%
+  mutate(agent_id = rep(1:n_agents, times = nrow(df_reward_sched))) %>%
+  group_by(agent_id) %>%
+  mutate(treechoicecode = sample(c(1L, 2L), size = n(), replace = TRUE),
+         points = if_else(treechoicecode == 1L,
+                          tree1info * tree1mag * 0.25,
+                          tree2info * tree2mag * 0.25),
+         totalmon = cumsum(points)) %>%
+  ungroup()
+```
+
+```{r}
+df_rt <-  df_all %>%
+  filter(component == "present",,
+                            day_block %in% c("day1_block1","day2_block1")) %>% 
+  dplyr::select(Participant.Public.ID,Reaction.Time,Trial.Index)
+
+df_rt_summary <- df_rt %>% 
+  group_by(Participant.Public.ID,day_block) %>% 
+  summarise(median_rt = median(Reaction.Time))
+
+ggplot(df_rt_summary, aes(x = median_rt))+
+  geom_histogram()+
+  scale_x_log10()
+
 df_prob <- df_all %>%
   filter(component == "choice",
                             day_block %in% c("day1_block1","day2_block1")) %>% 
-  group_by(Participant.Public.ID,day_block) %>% 
+  group_by(Participant.Public.ID,day_block) %>%
   mutate(roll_mean_prob = rollmean(outcome, k = 10,na.pad = T,
                                    align = "right"),
-         day = ifelse(day_block == "day1_block1","day1","day2"))
+         day = ifelse(day_block == "day1_block1","day1","day2")) %>% 
+  filter(!is.na(day))
 
-df_mrange <- df_all %>% 
+df_mrange <- df_all %>%
   filter(day_block %in% c("day1_block1","day2_block1")) %>% 
   group_by(Participant.Public.ID,day_block) %>% 
   summarise(max_mood = max(moodrate,na.rm = T),
@@ -2591,12 +2317,22 @@ df_mrange <- df_all %>%
   ungroup() %>% group_by(day_block) %>% 
   mutate(id = row_number())
 
-pp <- ggplot(df_prob, aes(x = Trial.Index,y = roll_mean_prob,
-                    color = day))+
-  stat_summary(geom = "line", linewidth = 1)+
-  scale_color_manual(values = c("grey30","grey"))+
-  labs(y = "rolling reward prob.",
-       x = "trial id")+
+df_agents_chance <- df_agents %>%
+  group_by(Trial.Index) %>%
+  summarise(totalmon = mean(totalmon),
+            totalmon_lo = quantile(totalmon, 0.025),
+            totalmon_hi = quantile(totalmon, 0.975),
+            .groups = "drop")
+
+pp <-ggplot(df_prob, aes(x = Trial.Index,y = totalmon,
+                     color = day, group = interaction(day,Participant.Public.ID)))+
+   geom_line(linewidth = 0.1)+
+   geom_line(data = df_agents_chance, aes(x = Trial.Index, y = totalmon),
+             inherit.aes = FALSE, linewidth = 1, color = "black", linetype = "dashed")+
+   scale_color_brewer(palette = "Set1")+
+   labs(y = "cumulative points",
+        x = "trial id",
+        caption = "Dashed: random choice (chance level)")+
 ggplot(df_mrange %>% filter(day_block=="day1_block1") %>% ungroup())+
   geom_segment(aes(x = id,y = min_mood, yend = max_mood),
                color = "pink")+
@@ -2613,6 +2349,7 @@ ggplot(df_mrange %>% filter(day_block=="day2_block1"))+
   geom_line(aes(x = id,y = mean_mood),color = "hotpink",size=1)+
   plot_layout(widths = c(2,1,1))
   
+df_prob %>% filter(Trial.Index==120, totalmon < 75.5)
 
 summary(l1 <- lmer(moodrate  ~ outcome1b + (day_block|Participant.Public.ID), df_reg %>% 
                      filter(outcome_magnitude1b %in% c(0,1),
@@ -2620,16 +2357,19 @@ summary(l1 <- lmer(moodrate  ~ outcome1b + (day_block|Participant.Public.ID), df
                      mutate(outcome1b = as.factor(outcome1b))))
 
 summary(l2 <- lmer(moodrate  ~ outcome_magnitude1b + (day_block|Participant.Public.ID), df_reg %>% 
-                     mutate(outcome_magnitude1b > 0) %>% 
                      filter(day_block %in% c("day1_block1","day2_block1"))))
 
-p1 <- plot_model(l2, type = "pred", terms = "outcome_magnitude1b[1,2,3,4,5,6,7,8,9,10]")+
-  ylim(1,9)+
-  geom_hline(yintercept = summary(l1)$coefficient[1,1], linetype = "dashed")+
-  annotate("text",x = 7 ,y = summary(l1)$coefficient[1,1]+ 0.2, label = "non-gain mean rating")+
-  scale_x_continuous(breaks = 1:10)+
-  labs(title = "",
-       x = "reward magnitude (when gain)",
+p1 <- ggplot(df_reg %>%
+  filter(day_block %in% c("day1_block1","day2_block1")),
+                             aes(x = outcome_magnitude1b,
+                                 y = moodrate,
+                                 group = Participant.Public.ID)) +
+  geom_smooth(method = "lm", se = FALSE,
+              color = "grey", size = 0.1) +
+  geom_smooth(aes(group = 1),
+              method = "lm", se = TRUE,
+              color = "red", linewidth = 1) +
+  labs(x = "reward magnitude",
        y = "mood ratings")
 
 p2 <- ggplot(df_reg, aes(x = moodrate, y = stat(density)))+
@@ -2689,12 +2429,15 @@ summary(lm(PAminusNA_mean~mean5_s_posminusneg,df_master))
 ```
 
 
+
+
 ## anonymization
 ```{r}
 anonymization_list <- data.frame(cbind(df_master$Prolific.Id,1:nrow(df_master)))
 names(anonymization_list) <- c("Prolific.Id","subject")
 
 df_master <- df_master %>% 
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
@@ -2702,6 +2445,7 @@ df_master <- df_master %>%
 write_csv(df_master,"../data/for_share/df_master.csv")
 
 demo_info <- demo_info %>%
+  filter(participant_id %in% anonymization_list$Prolific.Id) %>% 
   ungroup() %>% 
   rename(Prolific.Id = participant_id) %>% 
   left_join(anonymization_list) %>% 
@@ -2711,6 +2455,7 @@ demo_info <- demo_info %>%
 write_csv(demo_info,"../data/for_share/demo_info.csv")
 
 df_PANAS <- df_PANAS %>% 
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   ungroup() %>% 
   dplyr::select(Prolific.Id,Survey.Name:min_PAminusNA) %>% 
   left_join(anonymization_list) %>% 
@@ -2722,6 +2467,7 @@ write_csv(df_PANAS,"../data/for_share/df_PANAS.csv")
 df_panas_Est_tc <- df_panas_Est_tc %>% 
   ungroup() %>% 
   rename(Prolific.Id=id) %>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
@@ -2731,6 +2477,7 @@ write_csv(df_panas_Est_tc,"../data/for_share/df_panas_Est_tc.csv")
 df_all <- df_all %>% 
   ungroup() %>% 
   rename(Prolific.Id=Participant.Public.ID)%>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
@@ -2740,6 +2487,7 @@ write_csv(df_all,"../data/for_share/df_all.csv")
 df_Xs_scaled_all2_long <- df_Xs_scaled_all2_long %>% 
   ungroup() %>% 
   rename(Prolific.Id=Participant.Public.ID)%>%
+   filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
@@ -2758,6 +2506,7 @@ write_csv(df_days,"../data/for_share/df_days.csv")
 df_reg <- df_reg%>% 
   ungroup() %>% 
   rename(Prolific.Id=Participant.Public.ID)%>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
@@ -2767,15 +2516,27 @@ write_csv(df_reg,"../data/for_share/df_reg.csv")
 df_gor_Est_tc <- df_gor_Est_tc %>% 
   ungroup() %>% 
   rename(Prolific.Id=id) %>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
 
 write_csv(df_gor_Est_tc,"../data/for_share/df_gor_Est_tc.csv")
 
+df_Xs_scaled_sum_all_long <- df_Xs_scaled_sum_all_long %>% 
+  ungroup() %>% 
+  rename(Prolific.Id=Participant.Public.ID)%>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
+  left_join(anonymization_list) %>% 
+  dplyr::select(-Prolific.Id) %>% 
+  relocate(subject)
+
+write_csv(df_Xs_scaled_sum_all_long,"../data/for_share/df_Xs_scaled_sum_all_long.csv")
+
 df_Xs_scaled_all_long <- df_Xs_scaled_all_long %>% 
   ungroup() %>% 
   rename(Prolific.Id=Participant.Public.ID)%>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
@@ -2790,10 +2551,49 @@ panas_results <- panas_results %>%
 write_csv(panas_results,"../data/for_share/var1model_panas_results.csv")
 
 mood_results <- mood_results %>% 
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
   left_join(anonymization_list) %>% 
   dplyr::select(-Prolific.Id) %>% 
   relocate(subject)
 
 write_csv(mood_results,"../data/for_share/var1model_task_results.csv")
-```
 
+df_PANAS_uniform_response <- df_PANAS_uniform_response%>% 
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
+  left_join(anonymization_list) %>% 
+  ungroup() %>% 
+  dplyr::select(-Prolific.Id) %>% 
+  relocate(subject)
+
+write_csv(df_PANAS_uniform_response,"../data/for_share/df_PANAS_uniform_response.csv")
+
+df_gor_Est_long <- df_gor_Est_long %>% 
+  ungroup() %>% 
+  rename(Prolific.Id=id) %>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
+  left_join(anonymization_list) %>% 
+  dplyr::select(-Prolific.Id) %>% 
+  relocate(subject)
+
+write_csv(df_gor_Est_long,"../data/for_share/df_gor_Est_long.csv")
+
+df_wof <- df_wof%>% 
+  ungroup() %>% 
+  rename(Prolific.Id=Participant.Public.ID) %>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
+  left_join(anonymization_list) %>% 
+  dplyr::select(-Prolific.Id) %>% 
+  relocate(subject)
+
+write_csv(df_wof,"../data/for_share/df_wof.csv")
+
+df_wof_react <- df_wof_react %>% 
+  ungroup() %>% 
+  rename(Prolific.Id=Participant.Public.ID) %>%
+  filter(Prolific.Id %in% anonymization_list$Prolific.Id) %>% 
+  left_join(anonymization_list) %>% 
+  dplyr::select(-Prolific.Id) %>% 
+  relocate(subject)
+
+write_csv(df_wof_react,"../data/for_share/df_wof_react.csv")
+```

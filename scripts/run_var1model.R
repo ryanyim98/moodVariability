@@ -3,7 +3,7 @@ library(brms)
 panas_model <- fit_ar1_model(
   data = df_PANAS,
   var = "PAminusNA_sum",
-  scale_fn = function(x) (x + 50) / 100
+  scale_fn = function(x) (x + 50) / 100 #same scaling as the bayesian filter
 )
 
 panas_results <- extract_ar_results(
@@ -23,7 +23,7 @@ mood_results_list <- map(vars, function(v) {
   model_obj <- fit_ar1_model(
     data = df_mood_AR,
     var = v,
-    scale_fn = function(x) x / 7
+    scale_fn = function(x) x / 10 #same scaling as the bayesian filter
   )
   
   extract_ar_results(

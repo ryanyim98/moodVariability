@@ -9,30 +9,30 @@ date: "2026-02-07"
 ## how are they correlated across days and runs? (d1r1 vs. d2r1 is the test-retest)
 ```{r}
 #mu
-mu_retest<- c(cor(df_gor_Est_all$mean_mu_d1r1,df_gor_Est_all$mean_mu_d2r1),
-              cor(df_gor_Est_all$mean10_mu_d1r1,df_gor_Est_all$mean10_mu_d2r1),
-              cor(df_gor_Est_all$mean5_mu_d1r1,df_gor_Est_all$mean5_mu_d2r1),
-              cor(df_gor_Est_all$last_mu_d1r1,df_gor_Est_all$last_mu_d2r1)) %>% 
+mu_retest<- c(cor(df_gor_Est_all$mean_mu_d1r1,df_gor_Est_all$mean_mu_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$mean10_mu_d1r1,df_gor_Est_all$mean10_mu_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$mean5_mu_d1r1,df_gor_Est_all$mean5_mu_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$last_mu_d1r1,df_gor_Est_all$last_mu_d2r1,use = "complete.obs")) %>% 
   cbind(c("all","10_last","5_last","1_last")) %>% 
   as.data.frame()
 names(mu_retest) <- c("value","calc")
 mu_retest$calc <- factor(mu_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
 
 #vmu
-vmu_retest<- c(cor(df_gor_Est_all$mean_vmu_d1r1,df_gor_Est_all$mean_vmu_d2r1),
-              cor(df_gor_Est_all$mean10_vmu_d1r1,df_gor_Est_all$mean10_vmu_d2r1),
-              cor(df_gor_Est_all$mean5_vmu_d1r1,df_gor_Est_all$mean5_vmu_d2r1),
-              cor(df_gor_Est_all$last_vmu_d1r1,df_gor_Est_all$last_vmu_d2r1)) %>% 
+vmu_retest<- c(cor(df_gor_Est_all$mean_vmu_d1r1,df_gor_Est_all$mean_vmu_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$mean10_vmu_d1r1,df_gor_Est_all$mean10_vmu_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$mean5_vmu_d1r1,df_gor_Est_all$mean5_vmu_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$last_vmu_d1r1,df_gor_Est_all$last_vmu_d2r1,use = "complete.obs")) %>% 
   cbind(c("all","10_last","5_last","1_last")) %>% 
   as.data.frame()
 names(vmu_retest) <- c("value","calc")
 vmu_retest$calc <- factor(vmu_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
 
 #mu
-s_retest<- c(cor(df_gor_Est_all$mean_s_d1r1,df_gor_Est_all$mean_s_d2r1),
-              cor(df_gor_Est_all$mean10_s_d1r1,df_gor_Est_all$mean10_s_d2r1),
-              cor(df_gor_Est_all$mean5_s_d1r1,df_gor_Est_all$mean5_s_d2r1),
-              cor(df_gor_Est_all$last_s_d1r1,df_gor_Est_all$last_s_d2r1)) %>% 
+s_retest<- c(cor(df_gor_Est_all$mean_s_d1r1,df_gor_Est_all$mean_s_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$mean10_s_d1r1,df_gor_Est_all$mean10_s_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$mean5_s_d1r1,df_gor_Est_all$mean5_s_d2r1,use = "complete.obs"),
+              cor(df_gor_Est_all$last_s_d1r1,df_gor_Est_all$last_s_d2r1,use = "complete.obs")) %>% 
   cbind(c("all","10_last","5_last","1_last")) %>% 
   as.data.frame()
 names(s_retest) <- c("value","calc")
@@ -62,52 +62,62 @@ ggplot(s_retest, aes(x = calc, y = as.numeric(value))) +
 ggsave("../figures/revision/figure1.png",width = 7, height = 3)
 ```
 
-## how does wof affect the parameters?
 ```{r}
-df_gor_Est_long_long <- df_gor_Est_long %>% 
-  left_join(df_wof %>% rename(id= Participant.Public.ID))  %>% 
-  mutate(wof_result = ifelse(wofoutcome1 == 1 & grepl("d1",run), "win",
-                             ifelse(wofoutcome2 == 1 & grepl("d2",run), "win","loss"))) %>% 
-  pivot_longer( mean_mu:last_vmu, names_to = "measure",
-               values_to = "value")%>% 
-  mutate(group = ifelse(grepl("r1",run),"baseline",wof_result)) %>% 
-  mutate(parameter = ifelse(grepl("_mu",measure),"mu",
-                            ifelse(grepl("_vmu",measure),"vmu",
-                                   ifelse(grepl("_s",measure),"s",NA))))
+#mu
+mu_retest<- c(cor(df_gor_Est_wholeday_all$mean_mu_d1,df_gor_Est_wholeday_all$mean_mu_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$mean10_mu_d1,df_gor_Est_wholeday_all$mean10_mu_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$mean5_mu_d1,df_gor_Est_wholeday_all$mean5_mu_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$last_mu_d1,df_gor_Est_wholeday_all$last_mu_d2,use = "complete.obs")) %>% 
+  cbind(c("all","10_last","5_last","1_last")) %>% 
+  as.data.frame()
+names(mu_retest) <- c("value","calc")
+mu_retest$calc <- factor(mu_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
 
-df_gor_Est_long_long$wof_result <- factor(df_gor_Est_long_long$wof_result,
-                                          levels = c("baseline","win","loss"))
+#vmu
+vmu_retest<- c(cor(df_gor_Est_wholeday_all$mean_vmu_d1,df_gor_Est_wholeday_all$mean_vmu_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$mean10_vmu_d1,df_gor_Est_wholeday_all$mean10_vmu_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$mean5_vmu_d1,df_gor_Est_wholeday_all$mean5_vmu_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$last_vmu_d1,df_gor_Est_wholeday_all$last_vmu_d2,use = "complete.obs")) %>% 
+  cbind(c("all","10_last","5_last","1_last")) %>% 
+  as.data.frame()
+names(vmu_retest) <- c("value","calc")
+vmu_retest$calc <- factor(vmu_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
 
-ggplot(df_gor_Est_long_long %>% filter(parameter=="mu"), 
-       aes(x = group,
-           y = value,
-           group = group,
-           color = group))+
-  stat_summary()+
-  facet_wrap(~measure, nrow = 1)
+#mu
+s_retest<- c(cor(df_gor_Est_wholeday_all$mean_s_d1,df_gor_Est_wholeday_all$mean_s_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$mean10_s_d1,df_gor_Est_wholeday_all$mean10_s_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$mean5_s_d1,df_gor_Est_wholeday_all$mean5_s_d2,use = "complete.obs"),
+              cor(df_gor_Est_wholeday_all$last_s_d1,df_gor_Est_wholeday_all$last_s_d2,use = "complete.obs")) %>% 
+  cbind(c("all","10_last","5_last","1_last")) %>% 
+  as.data.frame()
+names(s_retest) <- c("value","calc")
+s_retest$calc <- factor(s_retest$calc, levels = c("all", "10_last", "5_last", "1_last"))
 
-summary(lmer(value~group+(1|id),df_gor_Est_long_long %>% filter(measure=="last_mu")))
 
-ggplot(df_gor_Est_long_long %>% filter(parameter=="vmu"), 
-       aes(x = group,
-           y = value,
-           group = group,
-           color = group))+
-  stat_summary()+
-  facet_wrap(~measure, nrow = 1)
 
-summary(lmer(value~group+(1|id),df_gor_Est_long_long %>% filter(measure=="last_vmu")))
+# Plot
+ggplot(mu_retest, aes(x = calc, y = as.numeric(value))) +
+  geom_point(size = 3, color = muColor) +
+  labs(x = "averaging window", y = "Test-retest reliability",
+       title = "task mu")+
+  ylim(0,1)+
+ggplot(vmu_retest, aes(x = calc, y = as.numeric(value))) +
+  ylim(0,1)+
+  geom_point(size = 3, color = vmuColor) +
+  labs(x = "averaging window", y = "Test-retest reliability",
+       title = "task volatility")+
+ggplot(s_retest, aes(x = calc, y = as.numeric(value))) +
+  ylim(0,1)+
+  geom_point(size = 3, color = noiseColor) +
+  labs(x = "averaging window", y = "Test-retest reliability",
+       title = "task noise")+
+  plot_annotation(title = "Test-retest reliability across parameterization")
 
-ggplot(df_gor_Est_long_long %>% filter(parameter=="s"), 
-       aes(x = group,
-           y = value,
-           group = group,
-           color = group))+
-  stat_summary()+
-  facet_wrap(~measure, nrow = 1)
 
-summary(lmer(value~group+(1|id),df_gor_Est_long_long %>% filter(measure=="last_s")))
+ggsave("../figures/revision/figure1_wholeday.png",width = 7, height = 3)
 ```
+
+
 
 ## actually show that the key results were not biased significantly by choice of calculation
 ### vmu
@@ -237,31 +247,29 @@ ggplot(results_clean,
 ggsave("../figures/revision/figure2.png",width = 6, height = 6)
 ```
 
-
-
 # also add below when partialling out the other parameter
 
 # PANAS VAR1 model with innovation term
 
 ```{r}
 
-cormat = cor(df_master %>% dplyr::select(mean_vmu_posminusneg,mean_s_posminusneg,
-                           PANAS_AR1,PANAS_VAR,
-                           mean_vmu,mean_s,
-                           TASK_AR1,TASK_VAR) %>% 
-               rename(EMA_vmu = mean_vmu_posminusneg,
-                      EMA_s = mean_s_posminusneg,
-                      TASK_vmu = mean_vmu, TASK_s=mean_s),
-             use = "pairwise.complete.obs")
+cormat = cor(df_master %>% dplyr::select(mean5_vmu_posminusneg,mean5_s_posminusneg,
+                           PANAS_AR1,PANAS_VAR,PANAS_MEAN,
+                           mean5_vmu,mean5_s,
+                           TASK_AR1,TASK_VAR,TASK_MEAN) %>% 
+               rename(EMA_vmu = mean5_vmu_posminusneg,
+                      EMA_s = mean5_s_posminusneg,
+                      TASK_vmu = mean5_vmu, TASK_s=mean5_s),
+             use = "complete.obs")
 
-corpmat = cor_pmat(df_master %>% dplyr::select(mean_vmu_posminusneg,mean_s_posminusneg,
-                           PANAS_AR1,PANAS_VAR,
-                           mean_vmu,mean_s,
-                           TASK_AR1,TASK_VAR)%>% 
-               rename(EMA_vmu = mean_vmu_posminusneg,
-                      EMA_s = mean_s_posminusneg,
-                      TASK_vmu = mean_vmu, TASK_s=mean_s),
-             use = "pairwise.complete.obs")
+corpmat = cor_pmat(df_master %>% dplyr::select(mean5_vmu_posminusneg,mean5_s_posminusneg,
+                           PANAS_AR1,PANAS_VAR,PANAS_MEAN,
+                           mean5_vmu,mean5_s,
+                           TASK_AR1,TASK_VAR,TASK_MEAN) %>% 
+               rename(EMA_vmu = mean5_vmu_posminusneg,
+                      EMA_s = mean5_s_posminusneg,
+                      TASK_vmu = mean5_vmu, TASK_s=mean5_s),
+             use = "complete.obs")
 
 ggcorrplot2::ggcorrplot.mixed(cormat,p.mat = corpmat,
            upper = "number",lower = "ellipse")+
