@@ -42,3 +42,4 @@ mturk-and-gmail.txt
 # Specific file keep
 !README.md
 .Rproj.user
+!data/for_share/*.csv
