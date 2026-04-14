@@ -15,43 +15,51 @@ output:
 rm(list = ls())
 setwd("~/Desktop/MoodInstability/moodVariability/")
 source(here::here("./scripts/load_library.R"))
-```
 
 #some basic formatting stuff
-```{r warning=FALSE,message=FALSE}
 theme_set(theme_classic()+
           theme(text = element_text(family = "Helvetica", size = 10)))
 vmuColor <- "red"
 noiseColor <- 'royalblue3'
 muColor <- 'forestgreen'
-```
 
 # load and combine data
+data_dir <- "~/Desktop/MoodInstability/moodVariability/data/for_share/"
 
-```{r warning=FALSE,message=FALSE}
-df_master <- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_master.csv")
-demo_info <- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/demo_info.csv")
-df_PANAS<- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_PANAS.csv")
-df_panas_Est_tc<- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_panas_Est_tc.csv")
-df_all<- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_all.csv")
-df_Xs_scaled_all2_long<- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_Xs_scaled_all2_long.csv")
-df_days <-  read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_days.csv")
-df_reg <-  read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_reg.csv")
-df_gor_Est_tc <-  read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_gor_Est_tc.csv")
-df_Xs_scaled_all_long<- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/df_Xs_scaled_all_long.csv")
-df_panas_var1 <- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/var1model_panas_results.csv")
-df_task_var1 <- read_csv("~/Desktop/MoodInstability/moodVariability/data/for_share/var1model_task_results.csv")
-df_reward_sched<- read_csv("../data/for_share/reward_sched.csv")
-df_PANAS_uniform_response <- read_csv("../data/for_share/df_PANAS_uniform_response.csv") %>% 
+# Simple reads
+file_map <- c(
+  "df_master"              = "df_master.csv",
+  "demo_info"              = "demo_info.csv",
+  "df_PANAS"               = "df_PANAS.csv",
+  "df_panas_Est_tc"        = "df_panas_Est_tc.csv",
+  "df_all"                 = "df_all.csv",
+  "df_Xs_scaled_all2_long" = "df_Xs_scaled_all2_long.csv",
+  "df_days"                = "df_days.csv",
+  "df_reg"                 = "df_reg.csv",
+  "df_gor_Est_tc"          = "df_gor_Est_tc.csv",
+  "df_Xs_scaled_all_long"  = "df_Xs_scaled_all_long.csv",
+  "df_panas_var1"          = "var1model_panas_results.csv",
+  "df_task_var1"           = "var1model_task_results.csv",
+  "df_reward_sched"        = "reward_sched.csv",
+  "df_gor_Est_long"        = "df_gor_Est_long.csv",
+  "df_wof"                 = "df_wof.csv",
+  "df_Xs_scaled_sum_all_long" = "df_Xs_scaled_sum_all_long.csv",
+  "df_wof_react"           = "df_wof_react.csv"
+)
+
+for (name in names(file_map)) {
+  assign(name, read_csv(paste0(data_dir, file_map[[name]])))
+}
+
+# Reads with extra processing
+df_PANAS_uniform_response <- read_csv(paste0(data_dir, "df_PANAS_uniform_response.csv")) %>%
   filter(proportion_flatline > 0.3)
-df_gor_Est_long<-read_csv("../data/for_share/df_gor_Est_long.csv")
-df_wof<-read_csv("../data/for_share/df_wof.csv")
-df_panas_Est_nocloseresponse <- read_csv("../data/for_share/ema_panas_params_noCloseResponse.csv") %>% 
-  rename(subject=id) %>% 
+
+df_panas_Est_nocloseresponse <- read_csv(paste0(data_dir, "ema_panas_params_noCloseResponse.csv")) %>%
+  rename(subject = id) %>%
   pivot_wider(names_from = "panas_type", values_from = mean_mu:last_vmu)
+
 df_master <- df_master %>% left_join(df_panas_Est_nocloseresponse)
-df_Xs_scaled_sum_all_long <- read_csv("../data/for_share/df_Xs_scaled_sum_all_long.csv")
-df_wof_react <- read_csv("../data/for_share/df_wof_react.csv")
 ```
 
 # demographics
@@ -947,21 +955,21 @@ df_gor_Est_tc_sum <- left_join(df_gor_Est_tc_sum_mean,df_gor_Est_tc_sum_sd) %>%
          trial_id = trial_id - 1)
 
 df_gor_Est_tc_sum$parameter <- factor(df_gor_Est_tc_sum$parameter, levels = c('mu_orig', 'vmu', 'SD'),
-                                        labels = c("mu (original space)","vmu",'SD'))
+                                        labels = c("mu (original space)","vmu",'S'))
 
 df_gor_Est_tc_indiv_mu <- df_gor_Est_tc %>% 
   filter(run %in% c("d1r1","d2r1")) %>%
   mutate(run = ifelse(run == "d1r1","day 1","day 2"), trial_id = trial_id - 1,
          parameter = factor("mu_orig", levels = c("mu_orig", "vmu", "s"), 
-                           labels = c("mu (original space)", "vmu", "SD")))
+                           labels = c("mu (original space)", "vmu", "S")))
 
 df_gor_Est_tc_indiv_var <- df_gor_Est_tc %>% 
   filter(run %in% c("d1r1","d2r1")) %>%
   mutate(run = ifelse(run == "d1r1","day 1","day 2"), trial_id = trial_id - 1) %>%
   pivot_longer(c(vmu, s), names_to = "parameter", values_to = "value") %>%
-  mutate(parameter = factor(parameter, levels = c("vmu", "s"), labels = c("vmu", "SD")))
+  mutate(parameter = factor(parameter, levels = c("vmu", "s"), labels = c("vmu", "S")))
 
-p3 <- ggplot(df_gor_Est_tc_sum %>% filter(parameter %in% c("vmu","SD")), aes(x = trial_id, y = mean, color = run))+
+p3 <- ggplot(df_gor_Est_tc_sum %>% filter(parameter %in% c("vmu","S")), aes(x = trial_id, y = mean, color = run))+
   geom_line(data = df_gor_Est_tc_indiv_var, aes(x = trial_id, y = value, group = interaction(subject, run),
                                                 color = run), 
             alpha = 0.06, linewidth = 0.25, inherit.aes = FALSE)+
@@ -1012,7 +1020,7 @@ df_panas_Est_tc_sum <- left_join(df_panas_Est_tc_sum_mean,df_panas_Est_tc_sum_sd
   mutate(trial_id = trial_id - 1)
 
 df_panas_Est_tc_sum$parameter <- factor(df_panas_Est_tc_sum$parameter, levels = c('mu_orig', 'vmu', 'SD'),
-                                        labels = c("mu (original space)","vmu",'SD'))
+                                        labels = c("mu (original space)","vmu",'S'))
 
 df_panas_Est_tc_indiv_mu <- df_panas_Est_tc %>% 
   filter(panas_type == "posminusneg") %>%
@@ -1022,9 +1030,9 @@ df_panas_Est_tc_indiv_var <- df_panas_Est_tc %>%
   filter(panas_type == "posminusneg") %>%
   mutate(trial_id = trial_id - 1) %>%
   pivot_longer(c(vmu, s), names_to = "parameter", values_to = "value") %>%
-  mutate(parameter = factor(parameter, levels = c("vmu", "s"), labels = c("vmu", "SD")))
+  mutate(parameter = factor(parameter, levels = c("vmu", "s"), labels = c("vmu", "S")))
 
-p4<-ggplot(df_panas_Est_tc_sum %>% filter(parameter %in% c("vmu","SD")), aes(x = trial_id, y = mean, color = panas_type))+
+p4<-ggplot(df_panas_Est_tc_sum %>% filter(parameter %in% c("vmu","S")), aes(x = trial_id, y = mean, color = panas_type))+
   geom_line(data = df_panas_Est_tc_indiv_var, aes(x = trial_id, y = value, group = subject), 
             alpha = 0.1, linewidth = 0.25, color = "gray40", inherit.aes = FALSE)+
   geom_line(linewidth = 1)+
@@ -1606,6 +1614,7 @@ p0+(p1/p2)+
   plot_layout(width = c(1,2))
 
 ggsave("../figures/figure_4.png",width = 7, height = 5)
+ggsave("../figures/figure_4.pdf", width = 7, height = 5, dpi = 300)
 ```
 
 ### also plot how mu relates to affective impact
@@ -2878,6 +2887,7 @@ p2c <- plot_model(lm(mean5_s_posminusneg ~  mean5_vmu + mean5_s, df_master), typ
   plot_layout(nrow = 2,width = c(2,1))
 
 ggsave("../figures/figure_3.png",width = 6, height = 6)
+ggsave("../figures/figure_3.pdf", width = 6, height = 6, dpi = 300)
 ```
 
 ### supplementary analysis including mu
@@ -3237,7 +3247,7 @@ performance::icc(lmer(value~1+(1|subject),df_gor_Est_long_long %>% filter(measur
                                                                           group%in% c("baseline"))))
 ```
 ## stability of the two-factor strucutre of PANAS across people
-```{r}
+```{r eval=F}
 library(lavaan)
 
 model_2factor <- '
@@ -3286,7 +3296,7 @@ lavTestLRT(fit_2factor, fit_1factor)
 ```
 
 ### plot within-person fit of PA/NA
-```{r}
+```{r eval=F}
 # Avoid ncpus detection issues in some environments (e.g. Rscript, clusters)
 lavOptions(ncpus = 1L)
 
@@ -3417,7 +3427,7 @@ mean(p3_data$pa_na_cor[abs(p3_data$pa_na_cor) < 1])
 ```
 
 ### show that excluding close responses in panas does not erase its correlation with task params
-```{r}
+```{r eval=F}
 p_vol <- ggplot(df_master,aes(x = mean5_vmu_posminusneg,y = mean5_vmu_posminusneg_noCloseResponse))+
   geom_point()+
   geom_smooth(method = "lm")+
@@ -3789,12 +3799,26 @@ p5 <- ggcorrplot::ggcorrplot(cormat, p.mat = corpmat, type = "upper",
   geom_rect(aes(xmin = 4 - 0.5, xmax = 4 + 0.5, ymin = 7 - 0.5, ymax = 7 + 0.5),
             fill = NA, color = "black", linewidth = 1, inherit.aes = FALSE)
 
-# Combine all plots with patchwork
-combined_plot <- (p1 |p2 | p3 | p4) / p5 +
-  plot_layout(nrow = 2, heights = c( 1, 2))+  # Adjust heights as needed
-  plot_annotation(tag_levels = "A")
-combined_plot
-ggsave("../figures/figure_s11.png",width = 10, height = 8)
+# Top row only in patchwork; stack with p5 via magick so panel A's y-axis is not
+# stretched across the full figure width (a quirk of (p1|...|p4) / p5 in patchwork).
+pw_top <- (p1 | p2 | p3 | p4) + plot_annotation(tag_levels = "A")
+pw_bottom <- p5 + plot_annotation(tag_levels = list(c("E")))
+
+fig_w <- 10
+fig_h <- 8
+h_top <- fig_h * 1 / 3
+h_bot <- fig_h * 2 / 3
+tmp_top <- tempfile(fileext = ".png")
+tmp_bot <- tempfile(fileext = ".png")
+ggsave(tmp_top, pw_top, width = fig_w, height = h_top, dpi = 300)
+ggsave(tmp_bot, pw_bottom, width = fig_w, height = h_bot, dpi = 300)
+figure_s11 <- magick::image_append(
+  c(magick::image_read(tmp_top), magick::image_read(tmp_bot)),
+  stack = TRUE
+)
+unlink(c(tmp_top, tmp_bot))
+figure_s11
+magick::image_write(figure_s11, path = "../figures/figure_s11.png")
 ```
 ## test-retest reliability of new measures
 ```{r}
