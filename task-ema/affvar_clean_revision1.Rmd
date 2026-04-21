@@ -2796,10 +2796,12 @@ summary(lm(mean5_s_posminusneg ~  mean5_vmu + mean5_s, df_master %>%
 ```{r}
 l2 <- lm(scale(mean5_vmu_posminusneg) ~ scale(mean5_vmu) + scale(mean5_s), df_master) #scale(mean5_mu) + 
 s2 <- summary(l2)
+s2
 round(confint(l2, level=0.95),3)
 
 l3 <- lm(scale(mean5_s_posminusneg) ~ scale(mean5_s) + scale(mean5_vmu), df_master)
 s3 <- summary(l3)
+s3
 round(confint(l3, level=0.95),3)
 
 bars <- Reduce(rbind,
@@ -2890,10 +2892,11 @@ ggsave("../figures/figure_3.png",width = 6, height = 6)
 ggsave("../figures/figure_3.pdf", width = 6, height = 6, dpi = 300)
 ```
 
-### supplementary analysis including mu
+### supplementary analysis controlling for mu
 ```{r}
 l1 <- lm(scale(mean5_mu_posminusneg) ~ scale(mean5_vmu) + scale(mean5_s) + scale(mean5_mu), df_master) #scale(mean5_mu) + 
 s1 <- summary(l1)
+s1
 round(confint(l1, level=0.95),3)
 
 l2 <- lm(scale(mean5_vmu_posminusneg) ~ scale(mean5_vmu) + scale(mean5_s) + scale(mean5_mu), df_master) #scale(mean5_mu) + 

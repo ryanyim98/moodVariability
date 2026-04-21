@@ -1,7 +1,7 @@
 clc;
 clear;
 cd ~/Desktop/MoodInstability/moodVariability/data;
-addpath("../matlab_code/")
+addpath("../bayesian_filter_matlab_code/")
 
 %% load the param matrix (this takes a few min)
 load('./bayes_model_params.mat'); 

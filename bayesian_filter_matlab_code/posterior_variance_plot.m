@@ -1,6 +1,6 @@
 clear
 close all
-cd /Users/yanyan/Desktop/MoodInstability/moodVariability/matlab_code/
+cd /Users/yanyan/Desktop/MoodInstability/moodVariability/bayesian_filter_matlab_code/
 % Figure save directory and dimensions (tweak as needed)
 figdir = fullfile(fileparts(pwd), './figures');
 if ~isfolder(figdir), mkdir(figdir); end
