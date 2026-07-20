@@ -7,7 +7,7 @@ output: html_document
 
 ## baseline questionnaires
 ```{r load data}
-indir <- '../data/raw/'
+indir <- '../data/raw_csv/'
 outdir <- '../data/'
 #load initial questionnaires
 df_init <- read_csv(paste0(indir,'baseline_questionnaires.csv'))

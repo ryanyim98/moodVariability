@@ -43,3 +43,4 @@ mturk-and-gmail.txt
 !README.md
 .Rproj.user
 !data/for_share/*.csv
+.positai
