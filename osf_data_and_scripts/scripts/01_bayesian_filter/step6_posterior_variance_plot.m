@@ -2,8 +2,9 @@
 % across participants), separately for the ESM (PANAS) and Task filter fits.
 % Inputs: osf_data_and_scripts/data/raw_mat/Gor_PANAS_Mod_Data_anonymized.mat
 % Outputs: osf_data_and_scripts/figures/posterior_variance_over_time.png
-% Tier 1: fully reproducible from what's in this package, once
-% step2_run_bayes_filter.m and step3_assemble_bayes_model_params.m have run.
+%
+% Fully reproducible from what's in this package, once step2_run_bayes_filter.m
+% and step3_assemble_bayes_model_params.m have run.
 
 clear
 close all

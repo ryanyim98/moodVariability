@@ -3,7 +3,7 @@
 # analytic sample), matching the exclusion criteria described in the manuscript's
 # Participants section (behavioral screening + zero-affect-variance exclusion).
 #
-# Tier 2 script: needs raw per-subject data that is NOT included in this OSF package.
+# Needs raw per-subject data that is not included in this OSF package -- see the README.
 # Run with: Rscript scripts/02_deidentify_raw_data/subject_flow.R (from the
 # moodVariability repo root, or anywhere inside it).
 

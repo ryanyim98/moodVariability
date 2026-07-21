@@ -1,0 +1,50 @@
+/* Light readability/aesthetic tweaks on top of the "flatly" bootswatch theme. */
+
+body {
+  max-width: 1100px;
+  line-height: 1.55;
+}
+
+#TOC {
+  font-size: 13px;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+}
+
+/* Top-level sections get a rule and extra breathing room so the long
+   notebook reads as a sequence of distinct analyses, not one wall of text. */
+h1 {
+  margin-top: 2.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid #eaecee;
+}
+
+h2 {
+  margin-top: 1.8em;
+}
+
+h3 {
+  color: #4a4a4a;
+}
+
+/* Code folding buttons and chunks */
+.btn-default {
+  font-size: 12px;
+}
+
+pre code {
+  font-size: 12.5px;
+}
+
+/* Keep figures comfortably sized and centered without overflowing the column */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Tables (kable output, df_print: paged) */
+table {
+  font-size: 13px;
+}

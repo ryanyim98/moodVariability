@@ -7,8 +7,9 @@
 % Outputs: <repo_root>/data/apple_moodrate_params_timecourse.csv,
 %   <repo_root>/data/ema_panas_params_timecourse.csv -- carry the ANONYMIZED
 %   subject number as their "id" column, same as step4_data_org.m's output.
-% Tier 1: fully reproducible from what's in this package, once
-% step2_run_bayes_filter.m and step3_assemble_bayes_model_params.m have run.
+%
+% Fully reproducible from what's in this package, once step2_run_bayes_filter.m
+% and step3_assemble_bayes_model_params.m have run.
 
 clear all; clc;
 script_dir = "~/Desktop/MoodInstability/moodVariability/osf_data_and_scripts/scripts/01_bayesian_filter"; % EDIT: path to this folder on your machine

@@ -9,7 +9,8 @@
 % Outputs: <repo_root>/data/ema_panas_params_noCloseResponse.csv (also copied by hand
 %   into osf_data_and_scripts/data/ -- this is the one shared-data file not produced
 %   by any script in this OSF package)
-% Tier 2: needs raw model output not included in this OSF package.
+%
+% Needs raw model output that is not included in this package -- see the README.
 
 data = load('~/Desktop/MoodInstability/moodVariability/osf_data_and_scripts/data/raw_mat/PANASPosMinNegFrMod_noCloseResponse_anonymized.mat').df_PANAS_out;
 modelout = run_model_PANASPosMinNeg(data,5,'PANASPosMinNeg_noCloseResponse');

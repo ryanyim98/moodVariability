@@ -3,30 +3,20 @@
 % wider vmu lower bound; plus the PANAS pos-only and neg-only series), on each
 % of the 4 individual RL-task runs, and on the 2 whole-day RL-task series (each
 % day's 2 runs concatenated end-to-end, then filtered as one series -- matching
-% the original pipeline's ParseGorillaModel.m/GorillaModelStruct(i).d1/.d2,
-% found in "Paper Material for Ryan"/AppleTask_scripts_1/).
-% Inputs: osf_data_and_scripts/data/raw_mat/RawData_anonymized.mat,
-%   .../PANASPosMinNegFrMod_anonymized.mat, .../PANASfrBaysMod_anonymized.mat --
-%   de-identified copies produced by step1_anonymize_raw_data.m, shipped inside
-%   this OSF package. Only the participant-identifier fields differ from the
-%   private originals (data/raw/raw_mat/RawData.mat etc.); all rating/choice/timing
-%   data is untouched, so results are identical either way. This step is now
-%   fully self-contained within osf_data_and_scripts/ -- no access to the
-%   private data/raw/ folder needed.
-% Calls: Gor_Md_mat_fr_Model.m, run_model_PANASPosMinNeg.m, run_model_Gorilla.m
-%   (-> maglearn_func_vardiff_flat_miss.m). Saving of *_modeldata.mat output is
-%   delegated to those functions, which write to
-%   <repo_root>/data/raw/raw_mat/<name>_modeldata.mat (the private raw-data
-%   folder, outside this OSF package). Names are passed explicitly below
-%   (PANASMod_POSMINNEG, PANASMod_POSMINNEG_largeVar, PANASMod_POS,
-%   PANASMod_NEG, GorillaModel_d1r1/d1r2/d2r1/d2r2/d1/d2) rather than left to
-%   default to a timestamp, so this script can find each file deterministically
-%   afterward. At the end, this script copies all 10 of those raw outputs into
-%   osf_data_and_scripts/data/raw_mat/<name>_modeldata_anonymized.mat too --
-%   safe to do since every fit above ran on already-anonymized input, so these
-%   contain no identifiers either. That's what lets
-%   step3_assemble_bayes_model_params.m run entirely from what's shipped in
-%   this package, without touching the private repo at all.
+% the original pipeline's ParseGorillaModel.m/GorillaModelStruct(i).d1/.d2).
+%
+% Fully reproducible from what's shipped in this package: reads the
+% de-identified data/raw_mat/*_anonymized.mat files produced by
+% step1_anonymize_raw_data.m, so it needs no private data.
+%
+% Calls Gor_Md_mat_fr_Model.m, run_model_PANASPosMinNeg.m, and run_model_Gorilla.m
+% (-> maglearn_func_vardiff_flat_miss.m), which save each fit's raw output to
+% <repo_root>/data/raw/raw_mat/<name>_modeldata.mat (the private repo, outside
+% this package). Since every fit here ran on already-anonymized input, this
+% script then copies all 10 of those outputs into
+% osf_data_and_scripts/data/raw_mat/<name>_modeldata_anonymized.mat too --
+% that's what lets step3_assemble_bayes_model_params.m run entirely from this
+% package.
 
 clear; clc;
 script_dir = "~/Desktop/MoodInstability/moodVariability/osf_data_and_scripts/scripts/01_bayesian_filter";

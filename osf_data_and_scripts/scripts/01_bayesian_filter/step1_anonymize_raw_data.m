@@ -1,49 +1,25 @@
 % Purpose: produces de-identified copies of every raw .mat file in
 % data/raw/raw_mat/, suffixed "_anonymized", so the raw data can be shared
-% (e.g. on OSF) without the raw .mat file (which contains identifiers).
+% (e.g. on OSF) without exposing identifiers.
 %
-% What actually gets scrubbed (RawData.mat is the ONLY file with identifiers):
-%   Md_Inst_Struct(i).PANAS.ProlifID
-%   Md_Inst_Struct(i).Gorilla.participant
-%   Md_Inst_Struct(i).InitQStruct.(<field(s) in INITQ_ID_FIELDS below>)
-% Each is replaced with a sequential integer (1..339, in existing struct-array
-% order), keeping the ORIGINAL FIELD'S DATA TYPE (categorical/string/char/numeric)
-% so downstream code that does e.g. char(Md_Inst_Struct(i).PANAS.ProlifID) keeps
-% working unchanged -- see anonymize_id() below.
+% Needs the private data/raw/raw_mat/ originals, which are not included in
+% this package -- see the README for details.
 %
-% InitQStruct's identifier field is also named 'ProlifID' (confirmed by running
-% this script -- it prints fieldnames(Md_Inst_Struct(1).InitQStruct) up front,
-% which also showed CESD/HPS/MISConForm/STAIS/STAIT/TEPS/TEPSA/TEPSC as the other
-% fields -- questionnaire data, not identifiers, left untouched).
+% What gets scrubbed (RawData.mat is the only file with identifiers):
+% PANAS.ProlifID, Gorilla.participant, and InitQStruct's ID field (named in
+% INITQ_ID_FIELDS below) are each replaced with a sequential integer
+% (1..339), keeping the original field's data type so downstream code (e.g.
+% char(...ProlifID)) keeps working -- see anonymize_id() below. PANAS.RawData
+% / InitQStruct.RawData / Gorilla.RawData (raw per-response export tables,
+% themselves identifying and unused by anything here) are dropped entirely
+% rather than scrubbed field-by-field. The other raw .mat files contain plain
+% numeric arrays with no identifier field, so they're copied through unchanged.
 %
-% PANAS.RawData and InitQStruct.RawData (and Gorilla.RawData, if present) are
-% ALSO dropped entirely: these are raw per-response Gorilla-platform export
-% tables (ResponseId, UserId, LastName, StudyId, SurveyId, ...) -- UserId and
-% LastName are themselves identifiers, and none of this is read by any script
-% in this repo (grep confirms nothing references .RawData), so it's removed
-% outright rather than scrubbed field-by-field.
-%
-% All other raw .mat files (PANASPosMinNegFrMod.mat, PANASfrBaysMod.mat,
-% PANASPosMinNegFrMod_noCloseResponse.mat, d1r1/d1r2/d2r1/d2r2ModDat.mat)
-% contain plain numeric arrays with no identifier field at all -- subject
-% identity in those is only implicit via row/array order, matched positionally
-% against RawData.mat. They're copied through byte-for-byte unchanged.
-%
-% Run this yourself in MATLAB (not run by the assistant that wrote it -- no
-% MATLAB available in that environment). Output goes to
-% osf_data_and_scripts/data/raw_mat/ -- i.e. directly into the OSF-upload
-% folder, since these anonymized copies are meant to be shared. (Reads the
-% real, non-anonymized originals from data/raw/raw_mat/, outside the package.)
-%
-% Also writes data/raw/subject_id_crosswalk.csv (Prolific.Id -> subject, in
-% Md_Inst_Struct's own order, 1..339). This crosswalk is what makes the subject
-% numbers here line up with the "subject" column in osf_data_and_scripts/data/
-% -- write_anonymized_data.R (R side) now reads this file and looks up each
-% participant's subject number from it, rather than generating its own
-% independent sequence. The crosswalk itself contains real Prolific IDs -- it
-% is NOT anonymized, lives in data/raw/ (outside osf_data_and_scripts, and
-% already covered by the repo's blanket *.csv .gitignore rule), and must never
-% be shared. Run this MATLAB script BEFORE re-running write_anonymized_data.R.
+% Output goes to osf_data_and_scripts/data/raw_mat/ (the OSF-upload folder).
+% Also writes data/raw/subject_id_crosswalk.csv (Prolific.Id -> subject) so
+% subject numbers here match the "subject" column in osf_data_and_scripts/data/;
+% write_anonymized_data.R reads this crosswalk. It contains real Prolific IDs,
+% so it must never be shared. Run this script before write_anonymized_data.R.
 
 clear; clc;
 script_dir = "~/Desktop/MoodInstability/moodVariability/osf_data_and_scripts/scripts/01_bayesian_filter"; % EDIT: path to this folder on your machine

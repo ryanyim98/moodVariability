@@ -1,33 +1,17 @@
-% Purpose: the missing "assembly" step called out in the OSF README's
-% "Two-tier reproducibility" section -- merges the per-run Bayesian Filter
-% fits that step2_run_bayes_filter.m copies into this package
-% (PANASMod_POSMINNEG_modeldata_anonymized.mat,
-% PANASMod_POSMINNEG_largeVar_modeldata_anonymized.mat,
-% PANASMod_POS_modeldata_anonymized.mat, PANASMod_NEG_modeldata_anonymized.mat,
-% GorillaModel_d1r1/d1r2/d2r1/d2r2_modeldata_anonymized.mat, and
-% GorillaModel_d1/d2_modeldata_anonymized.mat -- the two whole-day fits, each
-% day's 2 runs concatenated then filtered as one series, matching the
-% original pipeline's ParseGorillaModel.m/GorillaModelStruct(i).d1/.d2) back
-% into one consolidated Md_Inst_Struct, keyed the same way step4_data_org.m /
-% step5_make_bayes_timecourse.m / step6_posterior_variance_plot.m expect:
-% Md_Inst_Struct(i).PANASMod_POSMINNEG, .PANASMod_POSMINNEG_largeVar,
-% .PANASMod_POS, .PANASMod_NEG, and .GorillaModel.<run>. The .GorillaModel.d1/.d2
-% fields specifically are what step4_data_org.m's "gorilla (concatenated runs)"
-% section needs to write apple_moodrate_params_wholeday.csv.
+% Purpose: the "assembly" step -- merges the per-run Bayesian Filter fits that
+% step2_run_bayes_filter.m copies into this package (the 4 PANAS fits and the
+% 4 individual + 2 whole-day RL-task fits) into one consolidated Md_Inst_Struct,
+% keyed the way step4_data_org.m / step5_make_bayes_timecourse.m /
+% step6_posterior_variance_plot.m expect: Md_Inst_Struct(i).PANASMod_POSMINNEG,
+% .PANASMod_POSMINNEG_largeVar, .PANASMod_POS, .PANASMod_NEG, and
+% .GorillaModel.<run>.
 %
-% Inputs: everything comes from osf_data_and_scripts/data/raw_mat/ (shipped in
-%   this package) -- RawData_anonymized.mat (produced by
-%   step1_anonymize_raw_data.m) for the base Md_Inst_Struct with
-%   PANAS/Gorilla/InitQStruct, plus the 10 *_modeldata_anonymized.mat files
-%   step2_run_bayes_filter.m copies here. No private data required: this
-%   script never touches data/raw/raw_mat/ (the private repo's raw-data
-%   folder) at all.
-% Outputs: osf_data_and_scripts/data/raw_mat/Gor_PANAS_Mod_Data_anonymized.mat
-%   -- inside this package, so it can be shared. (Renamed from
-%   bayes_model_params.mat to match the original pipeline's naming; suffixed
-%   "_anonymized" like everything else in this folder, since
-%   Md_Inst_Struct(i).PANAS.ProlifID here is the anonymized sequential subject
-%   number, not the real Prolific ID.)
+% Fully reproducible from what's shipped in this package: reads only
+% data/raw_mat/ (RawData_anonymized.mat for the base struct, plus the 10
+% *_modeldata_anonymized.mat files step2 produced) -- no private data needed.
+%
+% Output: osf_data_and_scripts/data/raw_mat/Gor_PANAS_Mod_Data_anonymized.mat
+% (renamed from bayes_model_params.mat to match the original pipeline's naming).
 %
 % IMPORTANT downstream consequence: step4_data_org.m uses
 % Md_Inst_Struct(i).PANAS.ProlifID as the "id" column in
@@ -51,9 +35,6 @@
 % note elsewhere in this folder, -v7.3's HDF5 format has heavy per-dataset
 % overhead that dominates when a struct has many small/medium fields across
 % hundreds of subjects -- the default (compressed) format doesn't pay that tax.
-%
-% Tier 1: fully reproducible from what's in this package, once
-% step2_run_bayes_filter.m has been run (which is itself Tier 1).
 
 clear; clc;
 script_dir = "~/Desktop/MoodInstability/moodVariability/osf_data_and_scripts/scripts/01_bayesian_filter"; % EDIT: path to this folder on your machine

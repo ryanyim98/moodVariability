@@ -4,21 +4,30 @@ author: "Ryan Yan"
 date: "2025-09-21"
 output:
   html_document:
-    df_print: paged
-  html_notebook:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    toc_depth: 3
+    number_sections: true
     code_folding: hide
+    theme: flatly
+    highlight: tango
+    df_print: paged
+    css: custom.css
   pdf_document: default
 ---
 
-# Purpose: the main results/figures notebook for the task-ema paper. Loads every
-# de-identified table in data/ (all that's needed -- no raw data access), runs the
-# reported demographics/reliability/regression/VAR1 analyses, and writes every
-# figure (main + supplementary + reviewer-response) into figures/.
-# Tier 1: fully reproducible from what's shipped in this OSF package.
-# Open this file from within osf_data_and_scripts (e.g. via the .Rproj at its root)
-# so here::here() resolves data/ and figures/ correctly.
+# Overview
 
-# library b
+The main results/figures notebook for the task-ema paper. Loads every
+de-identified table in `data/` (no raw-data access needed), runs the
+reported demographics/reliability/regression/VAR(1) analyses, and writes
+every figure (main, supplementary, and reviewer-response) into `figures/`.
+Open this file from within `osf_data_and_scripts` (e.g. via the `.Rproj` at
+its root) so `here::here()` resolves `data/`/`figures/` correctly.
+
+# Setup
 ```{r setup, warning=FALSE,message=FALSE}
 rm(list = ls())
 source(here::here("scripts", "00_setup", "load_library.R"))
@@ -69,7 +78,7 @@ df_panas_Est_nocloseresponse <- read_csv(paste0(data_dir, "ema_panas_params_noCl
 df_master <- df_master %>% left_join(df_panas_Est_nocloseresponse)
 ```
 
-# demographics
+# Demographics and participant flow
 ```{r}
 cat("No. of participants with missing sex:", sum(is.na(demo_info$Sex)), "\n")
 cat("Sex distribution:\n")
@@ -95,7 +104,7 @@ cat("Current country of residence distribution:\n")
 table(demo_info$`Current Country of Residence`)
 ```
 
-## tally the number of days between two runs of RL tasks
+## Days between the two RL task sessions
 ```{r}
 cat("Days between the two RL task sessions:\n")
 table(df_days$day_diff)
@@ -110,7 +119,7 @@ cat("Days since enrollment: median =", median(df_days$day_since_enrol,na.rm = T)
     ", SD =", round(sd(df_days$day_since_enrol,na.rm = T), 2), "\n")
 ```
 
-## summarise how many PANAS people filled
+## PANAS survey completion
 ```{r}
 df_PANAS_completion<-df_PANAS %>%
   filter(subject %in% df_master$subject) %>%
@@ -121,7 +130,7 @@ cat("No. of PANAS surveys completed per participant: mean =", round(mean(df_PANA
     ", SD =", round(sd(df_PANAS_completion$n), 2), "\n")
 ```
 
-## summarise the average time between two surveys (excluding night-to-night)
+## Time between consecutive PANAS surveys
 ```{r}
 df_PANAS_timing <- df_PANAS %>% 
   mutate(duration = Survey.Submitted.Time-Survey.Started.Time) %>% 
@@ -194,7 +203,7 @@ summary(df_PANAS_timing_summary$count_short_response)
 sum(df_PANAS_timing_summary$count_short_response*df_PANAS_timing_summary$nobs)/sum(df_PANAS_timing_summary$nobs)
 ```
 
-# write a matrix for doing a sensitivity analysis, excluding those surveys that are too close to the previous one
+## Sensitivity-analysis matrix: excluding close-together responses
 
 ```{r}
 df_PANAS_out <- df_PANAS %>% 
@@ -231,7 +240,9 @@ if (dir.exists(dirname(noclose_out_path))) {
 
 
 
-### show diurnal variable in PANAS ratings
+# PANAS diurnal pattern and questionnaire scores
+
+## Diurnal pattern in PANAS ratings
 ```{r}
 df_panas_Est_tc_diur <- df_panas_Est_tc %>% 
   group_by(subject,panas_type) %>% 
@@ -323,7 +334,7 @@ ggplot(df_panas_Est_tc_day_sum %>%
 ggsave(here::here("figures", "figure_s1.png"),width = 8, height = 6)
 ```
 
-## mean questionnaire scores
+## Mean questionnaire scores
 ```{r}
 questionnaire_summary <- tibble::tribble(
   ~questionnaire, ~mean, ~sd,
@@ -339,8 +350,8 @@ questionnaire_summary
 ```
 
 
-# how did people perform, and how effective is the task in inducing affect?
-## simulate some participants with a random strategy
+# Task performance and validity check
+## Simulated random-choice agents (chance baseline)
 ```{r}
 # simulated agents: random choices and totalmon from df_reward_sched (mag = apples, info = reward presence; 0.25 pts per apple)
 set.seed(42)
@@ -360,7 +371,7 @@ df_agents <- df_reward_sched %>%
          totalmon = cumsum(points)) %>%
   ungroup()
 ```
-
+## Task RT, completion, and reward effects on mood
 ```{r}
 df_totalmon <- df_all %>% 
   filter(Trial.Index == 120) %>% 
@@ -486,7 +497,9 @@ pp/(p1+p2+p3)+
 ggsave(here::here("figures", "figure_s8.png"),width = 7, height =5)
 ```
 
-## look at response styles
+## Response-style checks (ARS/MRS)
+
+### Task mood-rating response style
 ```{r}
 df_reg_in <- df_reg %>%
   filter(day_block %in% c("day1_block1","day2_block1"))
@@ -600,7 +613,7 @@ df_reg_in %>%
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 ```
 
-
+### Threshold-sensitivity of key regressions
 ```{r}
 # Loop through ERS and MRS thresholds, store lm outputs, visualize
 ers_thresholds <- seq(40, 100, by = 10)
@@ -779,7 +792,7 @@ p2<-ggplot(df_results_threshold, aes(x = thresh, y = estimate, color = term, gro
 p1/p2
 ggsave(here::here("figures", "figure_s26.png"), width = 7, height = 8)
 ```
-
+### PANAS response style
 ```{r}
 df_response_style_panas <- df_PANAS %>%
   group_by(subject) %>%  
@@ -817,7 +830,9 @@ p4 <- ggplot(df_response_style_panas, aes(x = range_mood)) +
 ```
 
 
-## summary statistics of parameter values (for parameter recovery)
+# Parameter summary and reliability
+
+## Summary statistics of fitted parameters
 ```{r}
 cat("Range of vmu (volatility):", range(df_gor_Est_tc$vmu), "\n")
 cat("Range of s (noise):", range(df_gor_Est_tc$s), "\n")
@@ -888,7 +903,7 @@ ggplot(df_gor_Est_tc %>% filter(!is.na(day_block)), aes(x = trial_id, y = s, gro
 ```
 
 
-## reliability of task parameters across 2 days
+## Test-retest reliability of task parameters
 ```{r}
 df_master_sum <- df_master %>% 
   dplyr::select(mean5_s_d1r1, mean5_mu_d1r1, mean5_vmu_d1r1,
@@ -1088,7 +1103,7 @@ p4b <- ggplot(data = df_panas_Est_tc_sum %>% filter(parameter == "mu (original s
 ggsave(here::here("figures", "figure_s5.png"),width = 8, height = 8)
 ```
 
-### calculated test-retest reliability here
+### Test-retest reliability calculations
 ```{r}
 cat("Test-retest (day 1 vs day 2), mean (last-5) mu:\n")
 summary(lm(scale(mean5_mu_d1r1)~scale(mean5_mu_d2r1),df_master))
@@ -1170,7 +1185,7 @@ cat(sprintf("  Average: observed r = %+.3f  ->  disattenuated r = %+.3f  (r_xx =
 ```
 
 
-# get ICC of parameters
+## Intraclass correlation (ICC) of parameters
 ```{r}
 get_icc_manual <- function(model) {
   
@@ -1188,7 +1203,7 @@ get_icc_manual <- function(model) {
 }
 ```
 
-### within-session ICC over time (task and ESM params)
+### Within-session ICC over time (task and ESM)
 ```{r}
 icc_list_ema <- NULL
 
@@ -1335,7 +1350,7 @@ ggplot(icc_list_ema, aes(x = time_sdg,y = ICC,group=parameter,
 ggsave(here::here("figures", "figure_r0_2_1.png"),width = 10, height = 4)
 ```
 
-## between-session ICC of task params
+### Between-session ICC of task parameters
 ```{r}
 icc_list_task_between <- NULL
 
@@ -1371,7 +1386,7 @@ ggplot(icc_list_task_between, aes(x = time_sdg,y = ICC,group=parameter,
     legend.position = "left")
 ```
 
-### within-session ICC of PANAS score
+### Within-session ICC of PANAS scores
 ```{r}
 df_PANAS_ <- df_PANAS %>% 
   dplyr::select(subject,Trigger.Index,PAminusNA_sum) %>% 
@@ -1429,13 +1444,13 @@ ggplot(icc_list_panas, aes(x = time_sdg,y = ICC,group=parameter,
 
 
 
-# 2. mechanism: dependency of affective variability parameters on in-task reward events
+# Mechanism: reward events and affective variability
 ```{r}
 chart.Correlation(df_master %>% 
                     dplyr::select(X1,X2,X3))
 ```
 
-### in-task affective variability ~ reward events
+## Task affective variability ~ reward events
 ```{r}
 l1 <- lmer(value ~ regression_coef + (1|subject),df_Xs_scaled_all_long %>% 
             mutate(regression_coef = factor(regression_coef,levels = c("X1","X2","X3"),labels = c("trial -1~3","trial -4~6","trial -7~9"))))
@@ -1552,7 +1567,7 @@ p1_mu <- ggplot(bars %>%
   ylim(-0.35,0.9)
 ```
 
-### ESM affective variability ~ reward events
+## ESM affective variability ~ reward events
 ```{r}
 s1a <- summary(lm(scale(mean5_mu_posminusneg) ~ scale(X1), df_master))
 df_master$residuals1[!is.na(df_master$X1)] <- as.vector(residuals(s1a))
@@ -1645,14 +1660,14 @@ ggsave(here::here("figures", "figure_4.png"),width = 7, height = 5)
 ggsave(here::here("figures", "figure_4.pdf"), width = 7, height = 5, dpi = 300)
 ```
 
-### also plot how mu relates to affective impact
+### Mu (mean) vs. affective impact
 ```{r}
 p1_mu+p2_mu
 
 #ggsave(here::here("figures", "figure_4_s.png"),width = 7, height = 3)
 ```
 
-### additional test required by reviewer (additional test of summing 3 rewards)
+## Robustness check: summed reward-triplet regressors (task)
 ```{r}
 cor(df_Xs_scaled_sum_all_long$value,df_Xs_scaled_all_long$value,use = "complete.obs")
 pcor<-df_master %>%
@@ -1796,7 +1811,7 @@ p1_mu <- ggplot(bars %>%
   ylim(-0.35,0.9)
 ```
 
-### ESM affective variability ~ reward events (additional test of summing 3 rewards)
+## Robustness check: summed reward-triplet regressors (ESM)
 ```{r}
 s1a <- summary(lm(scale(mean5_mu_posminusneg) ~ scale(X1_sum), df_master))
 df_master$residuals1[!is.na(df_master$X1_sum)] <- as.vector(residuals(s1a))
@@ -1889,7 +1904,7 @@ pcor/
 
 ggsave(here::here("figures", "figure_r1_9_1.png"),width = 7, height = 7)
 ```
-### each beta separately
+### Each beta shown separately
 ```{r}
 s1a <- summary(lm(scale(mean5_mu) ~ scale(X1), df_master))
 s1b <- summary(lm(scale(mean5_mu) ~ scale(X2), df_master))
@@ -2026,7 +2041,7 @@ p2 <- ggplot(bars %>%
 ggsave(here::here("figures", "figure_s15.png"),width = 6, height = 7)
 ```
 
-### same analysis, while also considering magnitude (supplementary)
+## Supplementary: same analysis considering reward magnitude
 ```{r}
 l1 <- lmer(value ~ regression_coef + (1|subject),df_Xs_scaled_all2_long %>% 
             mutate(regression_coef = factor(regression_coef,levels = c("X1mo","X2mo","X3mo"),labels = c("trial -1~3","trial -4~6","trial -7~9"))) %>% 
@@ -2404,7 +2419,7 @@ p1o_mu+p2o_mu
 
 
 
-### additional affective variability parameters (SD, AR, RMSSD) with affective impact
+## Additional variability measures (SD, AR, RMSSD) vs. affective impact
 
 ```{r}
 s1a <- summary(lm(scale(moodrate_sd) ~ scale(X1), df_master))
@@ -2562,7 +2577,7 @@ ggsave(here::here("figures", "figure_s18.png"),width = 6, height = 7)
 ```
 
 
-## we can take the impact of WoF as an independent exam of the affective responsivity
+## Wheel-of-fortune reactivity as an independent check
 
 ```{r}
 df_wof_react_long <- df_wof_react %>% 
@@ -2786,9 +2801,9 @@ p2 <- ggplot(bars %>%
 ggsave(here::here("figures", "figure_s20.png"),width = 8, height = 6)
 ```
 
-# 1. ecological validity: dependency of EMA params on task params
+# Ecological validity: task-EMA parameter correspondence
 
-## look at how mu, vmu and SD correlates among them
+## Correlations among mu, vmu, and SD
 ```{r}
 cat("Mean of mean5_mu (task):", mean(df_master$mean5_mu), "\n")
 cat("Mean of moodrate_mean (task):", mean(df_master$moodrate_mean), "\n")
@@ -2896,7 +2911,7 @@ p1c <- ggplot(bars %>%
   ylim(-0.2,0.5)
 ```
 
-### the scatterplots
+### Scatterplots
 ```{r}
 p2b <-plot_model(lm(mean5_vmu_posminusneg ~  mean5_vmu + mean5_s, df_master), type = "pred", terms = "mean5_vmu",show.data = T,
            color = vmuColor, fill = vmuColor, dot.size = 0.5)+
@@ -2920,7 +2935,7 @@ ggsave(here::here("figures", "figure_3.png"),width = 6, height = 6)
 ggsave(here::here("figures", "figure_3.pdf"), width = 6, height = 6, dpi = 300)
 ```
 
-### supplementary analysis controlling for mu
+### Supplementary: controlling for mu
 ```{r}
 l1 <- lm(scale(mean5_mu_posminusneg) ~ scale(mean5_vmu) + scale(mean5_s) + scale(mean5_mu), df_master) #scale(mean5_mu) + 
 s1 <- summary(l1)
@@ -3020,7 +3035,7 @@ p1a+p1b+p1c
 ggsave(here::here("figures", "figure_s9.png"),width = 8, height = 3)
 ```
 
-## supplementary analyses for other variables (SD, AR, RMSSD)
+## Supplementary analyses: other variability measures (SD, AR, RMSSD)
 ```{r}
 RColorBrewer::brewer.pal(n=8,"Set2")
 s1 <- summary(lm(scale(PAminusNA_mssd) ~ scale(moodrate_mssd)+ scale(AR_task), df_master))
@@ -3217,7 +3232,7 @@ design <- "
 ggsave(here::here("figures", "figure_s18.png"),width = 10, height = 7)
 ```
 
-## how are RMSSD, SD and AR related to vmu and s?
+## RMSSD, SD, and AR vs. vmu and noise
 ```{r}
 summary(l1<-lm(scale(moodrate_mean) ~ scale(mean5_mu) + scale(mean5_vmu) + scale(mean_s),df_master))
 summary(l2<-lm(scale(PAminusNA_mean) ~ scale(mean5_mu_posminusneg) + scale(mean5_vmu_posminusneg) + scale(mean_s_posminusneg),df_master))
@@ -3238,7 +3253,7 @@ plot_model(l7)+plot_model(l8)
 ```
 
 
-## how does state affect affect the parameters?
+## Effect of state affect on parameter estimates
 ```{r}
 df_gor_Est_long_long <- df_gor_Est_long %>% 
   left_join(df_wof)  %>% 
@@ -3277,7 +3292,7 @@ performance::icc(lmer(value~1+(1|subject),df_gor_Est_long_long %>% filter(measur
 performance::icc(lmer(value~1+(1|subject),df_gor_Est_long_long %>% filter(measure=="mean5_s",
                                                                           group%in% c("baseline"))))
 ```
-## stability of the two-factor strucutre of PANAS across people
+## Stability of the PANAS two-factor structure across people
 ```{r eval=F}
 library(lavaan)
 
@@ -3326,7 +3341,7 @@ lavTestLRT(fit_2factor, fit_1factor)
 #PA and NA are clearly distinguishable even at the within-person level. 
 ```
 
-### plot within-person fit of PA/NA
+### Within-person fit of PA/NA
 ```{r eval=F}
 # Avoid ncpus detection issues in some environments (e.g. Rscript, clusters)
 lavOptions(ncpus = 1L)
@@ -3458,7 +3473,7 @@ cat("Mean within-person PA-NA correlation (excluding |r| == 1 cases):",
     mean(p3_data$pa_na_cor[abs(p3_data$pa_na_cor) < 1]), "\n")
 ```
 
-### show that excluding close responses in panas does not erase its correlation with task params
+### Robustness: excluding close PANAS responses
 ```{r eval=F}
 p_vol <- ggplot(df_master,aes(x = mean5_vmu_posminusneg,y = mean5_vmu_posminusneg_noCloseResponse))+
   geom_point()+
@@ -3484,10 +3499,10 @@ summary(lm(scale(mean5_s_posminusneg_noCloseResponse) ~ scale(mean5_vmu) + scale
 ```
 
 
-# robustness of parameter derivation
-## first, show how these different derivations were related
+# Robustness of parameter derivation
+## How the different derivations relate to each other
 
-## how are they correlated across days and runs? (d1r1 vs. d2r1 is the test-retest)
+## Correlation across days and runs (test-retest: day 1 run 1 vs. day 2 run 1)
 ```{r}
 df_gor_Est_all <- df_gor_Est_long %>% 
   dplyr::select(-subj_day_block) %>% 
@@ -3575,10 +3590,10 @@ ggsave(here::here("figures", "figure_s21.png"),width = 7, height = 3)
 
 
 
-## actually show that the key results were not biased significantly by choice of calculation
+## Key results are not biased by choice of parameterization
 
 
-## show regression results across parameterization
+## Regression results across parameterizations
 ```{r}
 run_model <- function(prefix, outcome_type){
 
@@ -3667,7 +3682,7 @@ ggplot(results_clean,
 ggsave(here::here("figures", "figure_s22.png"),width = 6, height = 6)
 ```
 
-### vmu corrplot
+### Volatility (vmu) correlation plot
 ```{r}
 df1<-df_master %>% 
                     dplyr::select(last_vmu_posminusneg,mean5_vmu_posminusneg,mean10_vmu_posminusneg,mean_vmu_posminusneg,
@@ -3697,7 +3712,7 @@ p1<-ggcorrplot::ggcorrplot(cormat,p.mat = corpmat,type = "upper",
         plot.title = element_text(size = 14))
 ```
 
-### s corrplot
+### Noise (s) correlation plot
 ```{r}
 df1<-df_master %>% 
                     dplyr::select(last_s_posminusneg,mean5_s_posminusneg,mean10_s_posminusneg,mean_s_posminusneg,
@@ -3733,7 +3748,7 @@ ggsave(here::here("figures", "figure_s23.png"),width = 10, height = 4)
 ```
 
 
-# PANAS VAR1 model with innovation term
+# PANAS VAR(1) model with innovation term
 
 ```{r}
 
@@ -3852,7 +3867,7 @@ unlink(c(tmp_top, tmp_bot))
 figure_s11
 magick::image_write(figure_s11, path = here::here("figures", "figure_s11.png"))
 ```
-## test-retest reliability of new measures
+## Test-retest reliability of the new measures
 ```{r}
 #AR and vmu has similar test-retest
 # vmu_retest
@@ -3916,7 +3931,7 @@ ggsave(here::here("figures", "figure_s12.png"),width = 6, height = 4)
 
 
 
-# make the master correlation matrix
+# Master correlation matrix
 ```{r}
 df_corr <- df_master %>% 
                     ungroup() %>% 
@@ -3969,7 +3984,7 @@ ggsave(here::here("figures", "figure_s13.png"),width = 8, height = 7)
 
 ```
 
-### AR(1) model parameters with affective impact
+## AR(1) model parameters vs. affective impact
 
 ```{r}
 s1a <- summary(lm(scale(TASK_LOGVAR) ~ scale(X1), df_master))
@@ -4100,7 +4115,7 @@ p1/p2
 ggsave(here::here("figures", "figure_s19.png"),width = 6, height = 7)
 ```
 
-# report association with self-reported questionnaires
+# Associations with self-reported questionnaires
 ```{r}
 df_corr_personality <- df_master %>% 
                     ungroup() %>% 

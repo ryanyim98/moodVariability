@@ -12,11 +12,7 @@ Bayesian-filter estimate CSVs, clean/join them into df_master/df_days/df_mood_AR
 and compute the exclusion list `subj_exclude_novariance_rl`.
 
 Inputs: <repo_root>/data/raw/raw_csv/*.csv (raw, not shared), <repo_root>/data/*.csv
-  (MATLAB filter output -- apple_moodrate_params.csv,
-  apple_moodrate_params_wholeday.csv, and ema_panas_params.csv specifically come
-  from scripts/01_bayesian_filter/step4_data_org.m, which needs
-  Gor_PANAS_Mod_Data_anonymized.mat -- see the README's "Two-tier
-  reproducibility" section), the private data/raw/subject_id_crosswalk.csv
+  (MATLAB filter output), the private data/raw/subject_id_crosswalk.csv
   (subject -> Prolific_Id, used to bridge those MATLAB CSVs' anonymized "id"
   back to a real Prolific.Id before joining -- see attach_prolific_id() below),
   and an external Prolific demographics export (path hardcoded below, lives
@@ -24,7 +20,7 @@ Inputs: <repo_root>/data/raw/raw_csv/*.csv (raw, not shared), <repo_root>/data/*
 Outputs: intermediate (non-anonymized) CSVs written back to <repo_root>/data/.
 Requires in scope already: `panas_results`, `mood_results` (from run_var1model.R).
 
-Tier 2 script: needs raw per-subject data that is NOT included in this OSF package.
+Needs raw per-subject data that is not included in this OSF package -- see the README.
 Not meant to be knit directly -- it is rendered by write_anonymized_data.R, which sets
 the knit working directory to the repo root (so `data/...` paths below resolve there).
 -->

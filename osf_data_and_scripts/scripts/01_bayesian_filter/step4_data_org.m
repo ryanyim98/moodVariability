@@ -2,23 +2,17 @@
 % fits merged in by step3_assemble_bayes_model_params.m) to the summary CSVs that
 % scripts/02_deidentify_raw_data/read_data_task_ema.Rmd actually reads:
 % apple_moodrate_params.csv, apple_moodrate_params_wholeday.csv, ema_panas_params.csv.
-% This is a REAL, currently-active dependency of the already-migrated R pipeline --
-% it was previously undocumented and left at the repo's data/raw/ (a script,
-% oddly filed among data).
-% Inputs: osf_data_and_scripts/data/raw_mat/Gor_PANAS_Mod_Data_anonymized.mat
-%   (produced by step3_assemble_bayes_model_params.m, which includes
-%   .PANASMod_POS/.PANASMod_NEG as of step2_run_bayes_filter.m fitting those
-%   two series).
-% Outputs: <repo_root>/data/apple_moodrate_params.csv,
-%   .../apple_moodrate_params_wholeday.csv, .../ema_panas_params.csv -- these
-%   carry the ANONYMIZED subject number as their "id" column (matching
-%   Gor_PANAS_Mod_Data_anonymized.mat's Md_Inst_Struct(i).PANAS.ProlifID).
-%   read_data_task_ema.Rmd bridges that back to a real Prolific.Id via the
-%   private data/raw/subject_id_crosswalk.csv before joining (see its
-%   attach_prolific_id() helper) -- do not "fix" that by reverting this
-%   script's input back to the private RawData.mat.
-% Tier 1: fully reproducible from what's in this package, once
-% step2_run_bayes_filter.m and step3_assemble_bayes_model_params.m have run.
+%
+% Input: osf_data_and_scripts/data/raw_mat/Gor_PANAS_Mod_Data_anonymized.mat
+% (produced by step3_assemble_bayes_model_params.m).
+% Outputs carry the ANONYMIZED subject number as their "id" column;
+% read_data_task_ema.Rmd bridges that back to a real Prolific.Id via the
+% private data/raw/subject_id_crosswalk.csv before joining (see its
+% attach_prolific_id() helper) -- do not "fix" that by reverting this script's
+% input back to the private RawData.mat.
+%
+% Fully reproducible from what's in this package, once step2_run_bayes_filter.m
+% and step3_assemble_bayes_model_params.m have run.
 
 clc;
 clear;

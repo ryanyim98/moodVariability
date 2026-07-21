@@ -6,8 +6,8 @@
 # df_mood_AR exist -> panas_results/mood_results) -> run_reg.R (reward-history
 # regressions) -> AR joins / exclusions -> reward_sched -> anonymized writes.
 #
-# Tier 2 script: needs raw per-subject data (data/raw/) that is NOT included in this
-# OSF package -- included here for transparency/provenance only. It also expects
+# Needs raw per-subject data (data/raw/) that is not included in this OSF package --
+# included here for transparency/provenance only. It also expects
 # osf_data_and_scripts/data/ema_panas_params_noCloseResponse.csv to already exist
 # (a MATLAB-pipeline output copied in by hand; this script does not produce it),
 # and data/raw/subject_id_crosswalk.csv to already exist (produced by MATLAB's
