@@ -1,0 +1,888 @@
+---
+title: "read_data_task_ema"
+author: "Ryan Yan"
+date: "2024-01-16"
+output: html_document
+---
+
+<!--
+Purpose: load every raw per-subject CSV (baseline questionnaires, PANAS EMA, the four
+apple/reward-learning task runs, the two wheel-of-fortune runs) and the MATLAB-derived
+Bayesian-filter estimate CSVs, clean/join them into df_master/df_days/df_mood_AR/etc.,
+and compute the exclusion list `subj_exclude_novariance_rl`.
+
+Inputs: <repo_root>/data/raw/raw_csv/*.csv (raw, not shared), <repo_root>/data/*.csv
+  (MATLAB filter output -- apple_moodrate_params.csv,
+  apple_moodrate_params_wholeday.csv, and ema_panas_params.csv specifically come
+  from scripts/01_bayesian_filter/step4_data_org.m, which needs
+  Gor_PANAS_Mod_Data_anonymized.mat -- see the README's "Two-tier
+  reproducibility" section), the private data/raw/subject_id_crosswalk.csv
+  (subject -> Prolific_Id, used to bridge those MATLAB CSVs' anonymized "id"
+  back to a real Prolific.Id before joining -- see attach_prolific_id() below),
+  and an external Prolific demographics export (path hardcoded below, lives
+  outside this repo).
+Outputs: intermediate (non-anonymized) CSVs written back to <repo_root>/data/.
+Requires in scope already: `panas_results`, `mood_results` (from run_var1model.R).
+
+Tier 2 script: needs raw per-subject data that is NOT included in this OSF package.
+Not meant to be knit directly -- it is rendered by write_anonymized_data.R, which sets
+the knit working directory to the repo root (so `data/...` paths below resolve there).
+-->
+
+## baseline questionnaires
+```{r load data}
+indir <- 'data/raw/raw_csv/'
+outdir <- 'data/'
+#load initial questionnaires
+df_init <- read_csv(paste0(indir,'baseline_questionnaires.csv'))
+
+df_init <- df_init%>% 
+  rename(Prolific.Id = Last.Name)%>%
+  filter(Prolific.Id != '')%>% #filter those without prolific id
+  dplyr::select(Survey.Started.Date,Response.Id:Trigger.Index,During.the.past.week....I.was.bothered.by.things.that.usually.don.t.bother.me.:During.the.past.week....I.could.not.get.going,#25-44
+Understand.the.reasons.when.I.feel.very.excited.or.happy.:Can.slow.myself.down.when.I.want.to.,#46-69
+When.I.hear.about.a.new.movie.starring.my.favorite.actor.I.can.t.wait.to.see.it.:When.something.exciting.is.coming.up.in.my.life.I.really.look.forward.to.it.,#71-88
+Right.now...I.feel.calm:Right.now....I.feel.pleasant,#90-109
+In.general....I.feel.pleasant:In.general...I.get.in.a.state.of.tension.or.turmoil.as.I.think.over.recent.concerns.and.interests) #111-130
+
+#load PANAS
+df_PANAS <- read.csv(paste0(indir,"ema_panas_sf.csv"))
+
+df_PANAS <- df_PANAS %>%
+  rename(Prolific.Id = Last.Name) %>%
+  filter(Prolific.Id != '') %>% #filter those without prolific id
+  dplyr::select(Response.Id:Trigger.Index, 
+         Interested, Distressed, Excited, Upset, Strong,
+         Guilty, Scared, Hostile, Enthusiastic, Proud, 
+         Irritable, Alert, Ashamed, Inspired, Nervous,
+         Determined, Attentive, Jittery, Active, Afraid) 
+```
+
+```{r sort obs. and delete duplicates}
+#-----------PANAS-----------
+df_PANAS <- df_PANAS[order(df_PANAS$Prolific.Id,df_PANAS$Trigger.Index),] #order the data frame by user id and trigger index
+
+#return user ids and the number of rows they have (ie. No of PANAS completed)
+user_PANAS <- df_PANAS%>%
+  group_by(Prolific.Id)%>%
+  count()%>%
+  filter(n >= 90)#change the number into the wanted threshold!
+  
+df_PANAS <- df_PANAS %>%
+  filter(Prolific.Id %in% user_PANAS$Prolific.Id) 
+
+#only keep the first of all duplicate cases
+df_PANAS <- df_PANAS%>%
+  group_by(Prolific.Id,Trigger.Index)%>%
+  slice_head()%>%
+  ungroup()
+
+#calculate PA and NA for PANAS
+df_PANAS <- df_PANAS %>%
+  mutate(PA_sum = Interested + Excited + Strong + Enthusiastic + Proud + Alert + Inspired + Determined + Attentive + Active) %>%
+  mutate(NA_sum = Distressed + Upset + Guilty + Scared + Hostile + Irritable + Ashamed + Nervous + Jittery + Afraid) %>% 
+  mutate(PAminusNA_sum = PA_sum - NA_sum,
+         PANA_sum = PA_sum + NA_sum)
+
+# #check if there is still any duplicate, should be none!
+df_PANAS%>%
+  group_by(Prolific.Id,Trigger.Index)%>%
+  count()%>%
+  filter(n != 1)
+
+df_PANAS <- df_PANAS%>%
+  mutate(day_index = (Trigger.Index-1) %/%6 +1)%>%
+  mutate(time_index = (Trigger.Index-1) %%6 + 1)%>%
+  mutate(day_time_index = paste0(day_index,'_',time_index)) %>% 
+  relocate(c(day_index,time_index),.after = Trigger.Index)
+
+# get max and min rating value of each person for converting mu back into original rating space
+df_PANAS <- df_PANAS %>% 
+  group_by(Prolific.Id) %>% 
+  mutate(max_PAminusNA = max(PAminusNA_sum, na.rm = T),
+         min_PAminusNA = min(PAminusNA_sum, na.rm = T))
+```
+
+## check uniform responders
+```{r}
+df_PANAS_uniform_response <-df_PANAS %>%
+  rowwise() %>%
+  mutate(panas_ndistinct = dplyr::n_distinct(c_across(Interested:Afraid), na.rm = TRUE)) %>%
+  ungroup() %>%
+  filter(panas_ndistinct == 1) %>% # drop rows with the same response on all PANAS items
+  dplyr::select(-panas_ndistinct) %>% 
+  group_by(Prolific.Id) %>% 
+  count() %>% 
+  left_join(user_PANAS %>% rename(total = n)) %>% 
+  mutate(proportion_flatline = n/total)
+
+ggplot(df_PANAS_uniform_response, aes(x = proportion_flatline))+
+  geom_histogram()
+
+subj_panas_flatliner <- df_PANAS_uniform_response %>% filter(proportion_flatline > 0.3)
+
+subj_panas_flatliner <- subj_panas_flatliner$Prolific.Id
+```
+
+
+
+```{r}
+#-----------init Q-----------
+df_init <- df_init%>%
+  filter(Prolific.Id %in% user_PANAS$Prolific.Id)%>%
+  filter(Survey.Name != 'MIS Consent Form')%>%
+  mutate(Trigger.Date = as.Date(Trigger.Date,"%d/%m/%Y"))
+
+#reorder
+df_init <- df_init[order(df_init$Prolific.Id,df_init$Trigger.Index,df_init$Trigger.Date),]
+
+#delete duplicates
+df_init <- df_init%>%
+  group_by(Prolific.Id)%>%
+  slice_head(n = 4)%>% #only take the first four rows earliest in time; comment this line to see the original data with duplicates
+  ungroup()
+
+df_init_date <- unique(df_init %>% 
+  dplyr::select(Prolific.Id,Trigger.Date))
+```
+
+```{r calc and aggregate baseline questionnaires}
+#-----------CESD: 20 items-----------
+#item already reversely coded
+df_CESD <- df_init%>%
+  filter(Survey.Name == 'CESD')%>%
+  dplyr::select(Prolific.Id,
+         During.the.past.week....I.was.bothered.by.things.that.usually.don.t.bother.me.:During.the.past.week....I.could.not.get.going)#20-39
+
+names(df_CESD)[2:21] <- paste0('CESD',1:20)
+df_CESD$CESD_sum <- rowSums(df_CESD[,2:21])
+
+#-----------HPS: 24 items---------------
+df_HPS <- df_init%>%
+  filter(Survey.Name == 'HPS')%>%
+  dplyr::select(Prolific.Id,
+         Understand.the.reasons.when.I.feel.very.excited.or.happy.:Can.slow.myself.down.when.I.want.to.)
+#
+
+names(df_HPS)[2:25] <- paste0('HPS',1:24)
+df_HPS$HPS_sum <- rowSums(df_HPS[,2:25])
+ltm::cronbach.alpha(df_HPS[2:25])
+
+#-----------TEPS: 18 items---------------
+df_TEPS <- df_init%>%
+  filter(Survey.Name == 'TEPS')%>%
+  dplyr::select(Prolific.Id,
+         When.I.hear.about.a.new.movie.starring.my.favorite.actor.I.can.t.wait.to.see.it.:When.something.exciting.is.coming.up.in.my.life.I.really.look.forward.to.it.)
+
+names(df_TEPS)[2:19] <- paste0('TEPS',1:18)
+df_TEPS$TEPS_sum <- rowSums(df_TEPS[,2:19])
+df_TEPS$TEPS_ant_sum <- rowSums(df_TEPS[,1+c(1,4,6,8,10,11,13,15,16,18)])
+df_TEPS$TEPS_con_sum <- rowSums(df_TEPS[,1+c(2,3,5,7,9,12,14,17)])
+ltm::cronbach.alpha(df_TEPS[2:19])
+
+#-----------STAI: 20*2 items---------------
+df_STAI <- df_init%>%
+  filter(Survey.Name == 'STAI')%>%
+  dplyr::select(Prolific.Id,
+         Right.now...I.feel.calm:In.general...I.get.in.a.state.of.tension.or.turmoil.as.I.think.over.recent.concerns.and.interests)
+
+names(df_STAI)[2:21] <- paste0('STAI_SA',1:20)
+names(df_STAI)[22:41] <- paste0('STAI_TA',1:20)
+df_STAI$STAI_SA_sum <- rowSums(df_STAI[,2:21])
+df_STAI$STAI_TA_sum <- rowSums(df_STAI[,22:41])
+
+#aggregate init Qs
+df_init_sum <- Reduce(merge, list(df_CESD, df_HPS, df_TEPS, df_STAI))
+  # filter(Prolific.Id %in%PANAS_and_gorilla_user$Prolific.Id)
+
+#sanity check
+names(df_init_sum)
+length(df_init_sum$Prolific.Id)
+```
+
+## gorilla task
+```{r}
+#load data files
+df_d1b1 <- read.csv(paste0(indir,"apple_d1b1.csv")) #struct learn day 1 block 1
+df_d1b1$day_block <- 'day1_block1'
+df_d1b2 <- read.csv(paste0(indir,"apple_d1b2.csv")) #struct learn day 1 block 2
+df_d1b2$day_block <- 'day1_block2'
+df_d2b1 <- read.csv(paste0(indir,"apple_d2b1.csv")) #struct learn day 2 block 1
+df_d2b1$day_block <- 'day2_block1'
+df_d2b2 <- read.csv(paste0(indir,"apple_d2b2.csv")) #struct learn day 2 block 2
+df_d2b2$day_block <- 'day2_block2'
+
+nrow(df_d1b1) #99997, should be the same for below; if not, check the reason
+nrow(df_d1b2) #99801
+nrow(df_d2b1) #99993
+nrow(df_d2b2) #100112
+
+df_all <- rbind(df_d1b1,df_d1b2,df_d2b1,df_d2b2)
+
+##sanity check
+#all subjects
+nsub = length(unique(df_all$Participant.Public.ID))-1 #354, but is actually 353!! because the last participant was ""
+sub_list <- unique(df_all$Participant.Public.ID)[1:nsub]
+
+df_all <- df_all %>%
+  filter(Participant.Public.ID%in%sub_list)%>% #get rid of the ""
+  filter(component != '')%>% #get rid of the first row for each participant which is empty
+  dplyr::select(Participant.Public.ID, Reaction.Time:totalmon,outcome_mag, outcome, component, moodrate,day_block,Local.Date)%>%
+  group_by(Participant.Public.ID,day_block,component,Local.Date)%>%
+  mutate(row_id_par = row_number())%>%
+  ungroup()%>%
+  group_by(Participant.Public.ID)%>%
+  mutate(moodrate_scaled = as.numeric(scale(moodrate)))%>%
+  ungroup()
+
+count(df_all, Participant.Public.ID)%>% 
+  filter(n > 1124)
+
+#get rid of duplicates
+df_all <- df_all %>% 
+   group_by(Participant.Public.ID,day_block)%>%
+   mutate(Trial.Index = ifelse(component == "moodrate",lead(Trial.Index)-1,Trial.Index)) %>% 
+   group_by(Participant.Public.ID,day_block,component,Trial.Index)%>%
+  mutate(rowid = row_number()) %>% 
+   filter(rowid == 1) %>% 
+  dplyr::select(-rowid)
+
+count(df_all %>% ungroup(), Participant.Public.ID)
+
+df_totalmon <- df_all %>% 
+  filter(Trial.Index==120,component=="choice") %>% 
+  dplyr::select(Participant.Public.ID,day_block,Trial.Index,totalmon) %>% 
+  pivot_wider(names_from = day_block, values_from = totalmon)
+```
+
+
+## wheel of fortune
+```{r impoart WoF and make data frame WoF~moodrate}
+#--------------wof--------------
+df_wof1 <- read.csv(paste0(indir,"wof_d1.csv"))%>% #WoF day 1
+  filter(component != 'wof')%>%
+  dplyr::select(Participant.Public.ID, randomiser.tc6s, wofoutcome,Local.Date)%>%
+  rename(Local.Date.D1 = Local.Date) %>% 
+  mutate(wof_order = randomiser.tc6s,wofoutcome1 = wofoutcome)%>%
+  dplyr::select(-randomiser.tc6s,-wofoutcome)
+
+df_wof2 <- read.csv(paste0(indir,"wof_d2.csv"))%>% #WoF day 2
+  filter(component != 'wof')%>%
+  dplyr::select(Participant.Public.ID, wofoutcome,Local.Date)%>%
+  rename(Local.Date.D2 = Local.Date) %>% 
+  mutate(wofoutcome2 = wofoutcome)%>%
+  dplyr::select(-wofoutcome)
+
+df_wof <- left_join(df_wof1,df_wof2, by = "Participant.Public.ID")%>%
+  filter(Participant.Public.ID!='')
+
+#600091ba38fa9b158243c79f was repeated??
+df_wof <- df_wof[-which(duplicated(df_wof$Participant.Public.ID)),]
+
+df_wof <- df_wof %>% 
+  mutate(Local.Date.D1=as.POSIXct(Local.Date.D1, format = "%d/%m/%Y %H:%M:%S", tz = "UTC"),
+         Local.Date.D2=as.POSIXct(Local.Date.D2, format = "%d/%m/%Y %H:%M:%S", tz = "UTC"),
+        Local.Date.D1.Day = as.Date(Local.Date.D1),
+        Local.Date.D2.Day = as.Date(Local.Date.D2),
+        day_diff = Local.Date.D2.Day-Local.Date.D1.Day)
+
+#--------mood rate original-------
+df_mood <- df_all%>%
+  filter(component == 'moodrate')%>%
+  dplyr::select(Participant.Public.ID, moodrate, day_block)%>%
+  group_by(Participant.Public.ID,day_block)%>%
+  mutate(Index = row_number())%>%
+  ungroup() %>% 
+  filter(Index <= 41)#should be between 1 and 41
+
+# get the participants who only had 1 rating across the runs
+subj_exclude_novariance_rl <- df_mood %>% 
+  # filter(day_block %in% c("day1_block1","day2_block1")) %>% 
+  group_by(Participant.Public.ID,day_block) %>% 
+  summarise(n = length(unique(moodrate))) %>% 
+  filter(n==1) %>%
+  mutate(subj_day_block = paste0(Participant.Public.ID,"_",day_block))
+
+df_mood <- df_mood %>%
+  mutate(subj_day_block = paste0(Participant.Public.ID,"_",day_block)) %>% 
+  filter(!subj_day_block %in% subj_exclude_novariance_rl$subj_day_block)
+
+#add variable: day and block
+#find another way! loops are too time-consuming
+df_mood$day[df_mood$day_block == "day1_block1" | df_mood$day_block == "day1_block2"] <- 1
+df_mood$block[df_mood$day_block == "day1_block1" | df_mood$day_block == "day2_block1"] <- 1
+
+df_mood$day[df_mood$day_block == "day2_block1" | df_mood$day_block == "day2_block1"] <- 2
+df_mood$block[df_mood$day_block == "day1_block2" | df_mood$day_block == "day2_block2"] <- 2
+
+write.csv(df_mood,paste0(outdir,'moodrate_by_trial.csv'))
+
+#--------mood rate scaled--------
+df_mood_scaled <- df_all%>%
+  filter(component == 'moodrate')%>%
+  dplyr::select(Participant.Public.ID, moodrate_scaled, moodrate,day_block)%>%
+  group_by(Participant.Public.ID,day_block)%>%
+  mutate(Index = row_number())%>%
+  ungroup() %>% 
+  filter(Index <= 41) %>%
+  mutate(subj_day_block = paste0(Participant.Public.ID,"_",day_block)) %>% 
+  filter(!subj_day_block %in% subj_exclude_novariance_rl$subj_day_block)
+
+df_mood_scaled$day[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day1_block2"] <- 1
+df_mood_scaled$block[df_mood_scaled$day_block == "day1_block1" | df_mood_scaled$day_block == "day2_block1"] <- 1
+
+df_mood_scaled$day[df_mood_scaled$day_block == "day2_block1" | df_mood_scaled$day_block == "day2_block2"] <- 2
+df_mood_scaled$block[df_mood_scaled$day_block == "day1_block2" | df_mood_scaled$day_block == "day2_block2"] <- 2
+
+df_mood_scaled <- left_join(df_mood_scaled,df_wof, by = "Participant.Public.ID") %>% 
+  mutate(day_block2 = ifelse(wofoutcome1 == 1 & day == 1, paste0("winday_block",block),
+                             ifelse(wofoutcome1 == 1 & day == 2, paste0("loseday_block",block),
+                                    ifelse(wofoutcome1 == 0 & day == 1, paste0("loseday_block",block),
+                                           ifelse(wofoutcome1 == 0 & day == 2, paste0("winday_block",block),NA)))))
+```
+
+```{r}
+df_all<-df_all %>%
+  mutate(subj_day_block = paste0(Participant.Public.ID,"_",day_block)) %>% 
+  filter(!subj_day_block %in% subj_exclude_novariance_rl$subj_day_block) 
+
+#get DF for completion time
+df_all %>% 
+  filter(component == "moodrate",
+         Trial.Index == 0 | is.na(Trial.Index)) %>% 
+  ungroup() %>% 
+  dplyr::select(Participant.Public.ID,day_block,Local.Date) %>% 
+  arrange(Participant.Public.ID)
+```
+
+```{r}
+#create a dataframe for running the autoregressive model
+df_mood_AR <- df_mood %>% 
+  dplyr::select(Participant.Public.ID,day_block,moodrate) %>% 
+  rename(Prolific.Id = Participant.Public.ID) %>% 
+  group_by(Prolific.Id,day_block) %>% 
+  mutate(Trigger.Index = row_number()) %>% 
+  pivot_wider(names_from = day_block, values_from = moodrate)
+```
+
+
+```{r}
+df_wof_react <- rbind(df_mood_scaled %>% 
+                        ungroup() %>% 
+                        dplyr::select(-Trial.Index,-subj_day_block) %>% 
+  filter(block == 1, (Index >= 1 & Index <= 3) | Index == 41),
+  df_mood_scaled %>% 
+    ungroup() %>% 
+    dplyr::select(-Trial.Index,-subj_day_block) %>% 
+    filter(block == 2,(Index >= 1 & Index <= 3) | Index == 41)) %>% 
+    dplyr::select(-day,-block,-moodrate,-day_block,-wofoutcome2) %>% 
+    ungroup() %>% 
+    pivot_wider(names_from = c(day_block2,Index), values_from = moodrate_scaled)
+
+df_wof_react <- df_wof_react %>% 
+  mutate(winday_X1 = (winday_block2_1 - winday_block1_41), # - (winday_block1_1 - winday_block2_41)
+         winday_X2 = winday_block2_2 - winday_block1_41 , #- (winday_block1_2 - winday_block2_41)
+         winday_X3 = winday_block2_3 - winday_block1_41 , #- (winday_block1_3 - winday_block2_41)
+         loseday_X1 = loseday_block2_1 - loseday_block1_41 , #- (loseday_block1_1 - loseday_block2_41)
+         loseday_X2 = loseday_block2_2 - loseday_block1_41 ,#- (loseday_block1_2 - loseday_block2_41)
+         loseday_X3 = loseday_block2_3 - loseday_block1_41) #- (loseday_block1_3 - loseday_block2_41)
+```
+
+
+## reorder mood ratings and combine raw and scaled values
+```{r}
+before_win <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 1 & day == 1 & block == 1) |
+           (wofoutcome2 == 1 & day == 2 & block == 1)) %>% 
+  mutate(block_type = "before_win")
+
+after_win <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 1 & day == 1 & block == 2) |
+           (wofoutcome2 == 1 & day == 2 & block == 2)) %>% 
+  mutate(block_type = "after_win")
+
+before_loss <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 0 & day == 1 & block == 1) |
+           (wofoutcome2 == 0 & day == 2 & block == 1)) %>% 
+  mutate(block_type = "before_loss")
+
+after_loss <- df_mood_scaled %>% 
+  filter( (wofoutcome1 == 0 & day == 1 & block == 2) |
+           (wofoutcome2 == 0 & day == 2 & block == 2)) %>% 
+  mutate(block_type = "after_loss")
+
+df_mood_ratings <- rbind(before_win,after_win,before_loss,after_loss) %>% 
+  group_by(Participant.Public.ID) %>% 
+  mutate(Mood.Index = Index - 1)#the order of events are mood rating / choice / outcome, so mood rating's index needs to be subtracted by 1
+
+# get max and min rating value of each person for converting mu back into original rating space
+#note that because the model estimates mu for each block separately, the range also needs to be for each block
+df_mood_ratings <- df_mood_ratings %>% 
+  group_by(day_block,Participant.Public.ID) %>% 
+  mutate(max_moodrate = max(moodrate, na.rm = T),
+         min_moodrate = min(moodrate, na.rm = T))
+```
+
+
+#affective events regression
+```{r}
+df_betas <- df_all %>% 
+  filter(component == "choice") %>% 
+  dplyr::select(Participant.Public.ID, Trial.Index,totalmon:outcome,day_block) %>% 
+  rename(Index = Trial.Index) %>% 
+  mutate(Mood.Index = floor((Index-1)/3)+1) %>% 
+  group_by(Participant.Public.ID, day_block,Mood.Index) %>% 
+  mutate(Choice.Index = row_number()) %>% 
+  ungroup() %>% 
+  dplyr::select(Participant.Public.ID, day_block,Mood.Index,Choice.Index,outcome,outcome_mag) %>% 
+  group_by(Participant.Public.ID, day_block)%>% 
+  mutate(outcome1b = lag(outcome,0),
+         outcome2b = lag(outcome,1),
+         outcome3b = lag(outcome,2),
+         outcome4b = lag(outcome,3),
+         outcome5b = lag(outcome,4),
+         outcome6b = lag(outcome,5),
+         outcome7b = lag(outcome,6),
+         outcome8b = lag(outcome,7),
+         outcome9b = lag(outcome,8),
+         outcome1bo = ifelse(outcome1b == 1, outcome1b, -1), #orthogonalized
+         outcome2bo = ifelse(outcome2b == 1, outcome2b, -1),
+         outcome3bo = ifelse(outcome3b == 1, outcome3b, -1),
+         outcome4bo = ifelse(outcome4b == 1, outcome4b, -1),
+         outcome5bo = ifelse(outcome5b == 1, outcome5b, -1),
+         outcome6bo = ifelse(outcome6b == 1, outcome6b, -1),
+         outcome7bo = ifelse(outcome7b == 1, outcome7b, -1),
+         outcome8bo = ifelse(outcome8b == 1, outcome8b, -1),
+         outcome9bo = ifelse(outcome9b == 1, outcome9b, -1),
+         outcome_mag1b = ifelse(lag(outcome_mag,0) == 0, 0, lag(outcome_mag,0)-5),#orthogonalized
+         outcome_mag2b = ifelse(lag(outcome_mag,1) == 0, 0, lag(outcome_mag,1)-5),
+         outcome_mag3b = ifelse(lag(outcome_mag,2) == 0, 0, lag(outcome_mag,2)-5),
+         outcome_mag4b = ifelse(lag(outcome_mag,3) == 0, 0, lag(outcome_mag,3)-5),
+         outcome_mag5b = ifelse(lag(outcome_mag,4) == 0, 0, lag(outcome_mag,4)-5),
+         outcome_mag6b = ifelse(lag(outcome_mag,5) == 0, 0, lag(outcome_mag,5)-5),
+         outcome_mag7b = ifelse(lag(outcome_mag,6) == 0, 0, lag(outcome_mag,6)-5),
+         outcome_mag8b = ifelse(lag(outcome_mag,7) == 0, 0, lag(outcome_mag,7)-5),
+         outcome_mag9b = ifelse(lag(outcome_mag,8) == 0, 0, lag(outcome_mag,8)-5),
+         outcome_magnitude1b = lag(outcome_mag,0) ,
+         outcome_magnitude2b = lag(outcome_mag,1),
+         outcome_magnitude3b = lag(outcome_mag,2),
+         outcome_magnitude4b = lag(outcome_mag,3),
+         outcome_magnitude5b = lag(outcome_mag,4),
+         outcome_magnitude6b = lag(outcome_mag,5),
+         outcome_magnitude7b = lag(outcome_mag,6),
+         outcome_magnitude8b = lag(outcome_mag,7),
+         outcome_magnitude9b = lag(outcome_mag,8)) %>%
+  filter(Choice.Index == 3) %>% 
+  dplyr::select(-outcome,-outcome_mag,-Choice.Index)
+
+df_reg <- full_join(df_betas,df_mood_ratings,
+                    by = c("Participant.Public.ID","Mood.Index","day_block"))
+
+```
+
+The MATLAB-derived dataframes read below (`df_gor_Est_raw`/`df_gor_Est*`,
+`df_panas_Est`, `df_gor_Est_tc`, `df_panas_Est_tc`) are keyed by `id`, the
+*anonymized* sequential subject number written by
+`step3_assemble_bayes_model_params.m`/`step4_data_org.m`/`step5_make_bayes_timecourse.m`
+(those now run entirely from `RawData_anonymized.mat`, so this package's
+`Gor_PANAS_Mod_Data_anonymized.mat` never carries a real Prolific ID). But
+`df_master`, `subj_exclude_novariance_rl`, `df_mood_ratings`, and `df_PANAS`
+below are all still keyed by the real, non-anonymized `Prolific.Id` at this
+point in the pipeline (anonymization happens later, in `write_anonymized_data.R`,
+applied to `df_master` etc. as a whole). Bridge `id` -> real `Prolific.Id` via
+the private subject-id crosswalk (the same `Prolific.Id -> subject` mapping
+`step1_anonymize_raw_data.m` used to anonymize `RawData.mat` in the first
+place) wherever these get joined or matched against real-ID-keyed data below,
+rather than renaming/using `id` directly as if it were `Prolific.Id` -- that
+would silently join on the wrong identity space (anonymized number vs. real
+ID) instead of erroring, or type-error like `Can't join x$Prolific.Id ...
+y$Prolific.Id due to incompatible types` if the CSV's `id` column got read as
+integer. Two helpers below: `attach_prolific_id()` renames `id` to
+`Prolific.Id` (for joins keyed by `Prolific.Id`); `anonymized_id_to_prolific_id()`
+keeps the column named `id` but replaces its values with the real ID (for
+places that need to keep grouping/joining on a column literally called `id`
+against other real-ID-keyed data, e.g. `df_gor_Est_tc`/`df_panas_Est_tc` below).
+```{r}
+subject_id_crosswalk <- read.csv('data/raw/subject_id_crosswalk.csv') # private: subject -> Prolific_Id
+
+attach_prolific_id <- function(df) {
+  df %>%
+    left_join(subject_id_crosswalk, by = c("id" = "subject")) %>%
+    dplyr::select(-id) %>%
+    rename(Prolific.Id = Prolific_Id)
+}
+
+# Same bridge, but for dataframes that need to keep a column literally named
+# `id` (e.g. to `group_by(id, ...)`/`left_join(..., by = c("id", ...))` against
+# other real-ID-keyed data below) instead of renaming it to `Prolific.Id`.
+# write_anonymized_data.R's own `rename(Prolific.Id = id)` on
+# df_gor_Est_tc/df_panas_Est_tc later confirms `id` is expected to hold the
+# real Prolific ID throughout this Rmd, not the anonymized number.
+anonymized_id_to_prolific_id <- function(df) {
+  df %>%
+    left_join(subject_id_crosswalk, by = c("id" = "subject")) %>%
+    mutate(id = Prolific_Id) %>%
+    dplyr::select(-Prolific_Id)
+}
+```
+
+## Bayesian model estimates
+```{r }
+df_gor_Est_raw <- read.csv(paste0(outdir,'./apple_moodrate_params.csv')) %>%
+  left_join(subject_id_crosswalk, by = c("id" = "subject")) %>% # bridge for subj_day_block only; `id` itself stays the anonymized number below
+  mutate(
+    subj_day_block = case_when(
+      run == "d1r1" ~ paste0(Prolific_Id, "_day1_block1"),
+      run == "d2r1" ~ paste0(Prolific_Id, "_day2_block1"),
+      run == "d1r2" ~ paste0(Prolific_Id, "_day1_block2"),
+      run == "d2r2" ~ paste0(Prolific_Id, "_day2_block2"),
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  dplyr::select(-Prolific_Id) %>%
+  filter(is.na(subj_day_block) |
+           !subj_day_block %in% subj_exclude_novariance_rl$subj_day_block)
+
+df_gor_Est_long <- df_gor_Est_raw %>% 
+  filter(run %in% c("d1r1","d2r1","d1r2","d2r2")) 
+
+df_gor_Est_all <- df_gor_Est_raw %>% 
+  filter(run %in% c("d1r1","d2r1","d1r2","d2r2")) %>% 
+  pivot_wider(id_cols = id,names_from = run, values_from = mean_mu:last_vmu)
+
+df_gor_Est <- df_gor_Est_raw %>% 
+  filter(run %in% c("d1r1","d2r1")) %>%  #only take the first run each day
+  ungroup() %>% 
+  group_by(id) %>% 
+  summarise_at(vars(mean_mu:last_vmu), ~mean(.x))
+
+df_gor_Est_wholeday_all <- read.csv(paste0(outdir,'./apple_moodrate_params_wholeday.csv')) %>% 
+  group_by(id,run) %>% 
+  pivot_wider(id_cols = id,names_from = run, values_from = mean_mu:last_vmu)
+
+df_gor_Est_wholeday <- read.csv(paste0(outdir,'./apple_moodrate_params_wholeday.csv')) %>% 
+  ungroup() %>% 
+  group_by(id) %>% 
+  summarise_at(vars(mean_mu:last_vmu), ~mean(.x))
+
+names(df_gor_Est_wholeday)[2:ncol(df_gor_Est_wholeday)] <- paste0(names(df_gor_Est_wholeday)[2:ncol(df_gor_Est_wholeday)],"_wholeday")
+
+df_gor_Est2 <- df_gor_Est_raw %>% 
+  ungroup() %>% 
+  group_by(id) %>% 
+  summarise_at(vars(mean_mu:last_vmu), ~mean(.x))
+names(df_gor_Est2)[2:ncol(df_gor_Est2)] <- paste0(names(df_gor_Est2)[2:ncol(df_gor_Est2)],"_all4runs")
+
+df_panas_Est <- read.csv(paste0(outdir,'./ema_panas_params.csv')) %>%
+  pivot_wider(names_from = panas_type, values_from = mean_mu:last_vmu)
+
+```
+
+
+```{r}
+df_PANAS_mean <- df_PANAS %>% 
+  ungroup() %>% 
+  group_by(Prolific.Id) %>% 
+  summarise(PA_mean = mean(PA_sum, na.rm = T),
+            NA_mean = mean(NA_sum, na.rm = T),
+            PAminusNA_mean = mean(PAminusNA_sum, na.rm = T),
+            PA_sd = sd(PA_sum, na.rm = T),
+            NA_sd = sd(NA_sum, na.rm = T),
+            PAminusNA_sd = sd(PAminusNA_sum, na.rm = T),
+            PANA_mean = mean(PANA_sum, na.rm = T),
+            PANA_sd = sd(PANA_sum, na.rm = T),
+            PA_mssd = psych::rmssd(PA_sum),
+            NA_mssd = psych::rmssd(NA_sum),
+            PAminusNA_mssd = psych::rmssd(PAminusNA_sum))
+
+df_master <- left_join(df_init_sum,df_PANAS_mean) %>% 
+  left_join(df_gor_Est %>%
+              attach_prolific_id()) %>% 
+  left_join(df_gor_Est2 %>%
+              attach_prolific_id()) %>% 
+  left_join(df_gor_Est_all %>%
+              attach_prolific_id()) %>% 
+  left_join(df_gor_Est_wholeday %>%
+              attach_prolific_id()) %>% 
+  left_join(df_gor_Est_wholeday_all %>%
+              attach_prolific_id()) %>% 
+  left_join(df_mood %>% 
+              filter(block == 1) %>% 
+              group_by(Participant.Public.ID,day_block) %>% 
+              summarise(moodrate_mean = mean(moodrate, na.rm = T),
+                        moodrate_sd = sd(moodrate, na.rm = T),
+                        moodrate_mssd = psych::rmssd(moodrate)) %>% 
+              rename(Prolific.Id = Participant.Public.ID) %>% 
+              pivot_wider(names_from = "day_block", values_from = c("moodrate_mean","moodrate_sd","moodrate_mssd"))%>% 
+  mutate(
+    moodrate_mean = rowMeans(
+      across(c(moodrate_mean_day1_block1, 
+               moodrate_mean_day2_block1)), na.rm = TRUE),
+    moodrate_sd = rowMeans(
+      across(c(moodrate_sd_day1_block1, 
+               moodrate_sd_day2_block1)), na.rm = TRUE),
+    moodrate_mssd = rowMeans(
+      across(c(moodrate_mssd_day1_block1, 
+               moodrate_mssd_day2_block1)), na.rm = TRUE)
+  ))%>% 
+  left_join(df_panas_Est%>%
+              attach_prolific_id()) %>% 
+  left_join(df_gor_Est_all%>%
+              attach_prolific_id())
+
+df_master <- left_join(df_master,df_wof_react %>% 
+                         rename(Prolific.Id = Participant.Public.ID))%>% 
+  mutate(wof_X1 = (winday_X1 - loseday_X1)/2,
+         wof_X2 = (winday_X2 - loseday_X2)/2,
+         wof_X3 = (winday_X3 - loseday_X3)/2)
+  # mutate(wof_X1 = winday_X1,
+  #        wof_X2 = winday_X2,
+  #        wof_X3 = winday_X3)
+
+
+df_days <- df_all %>% 
+  filter(day_block %in% c("day1_block2","day2_block2")) %>% 
+  group_by(Participant.Public.ID, day_block) %>% 
+  slice(1) %>% 
+  dplyr::select(Participant.Public.ID, day_block, Local.Date) %>% 
+  mutate(
+    Local.Date = as.POSIXct(Local.Date, 
+                            format = "%d/%m/%Y %H:%M:%S", 
+                            tz = "UTC")
+  ) %>% 
+  pivot_wider(names_from = day_block, values_from = Local.Date) %>% 
+  mutate(
+    # Exact time difference in hours
+    time_diff_hours = as.numeric(difftime(day2_block2, 
+                                          day1_block2, 
+                                          units = "hours")),
+    # Whole calendar day difference
+    day_diff = as.numeric(as.Date(day2_block2) - 
+                          as.Date(day1_block2))
+  ) %>% 
+  filter(Participant.Public.ID %in% df_master$Prolific.Id)
+  
+df_days <- left_join(df_days,df_init_date %>% 
+                      mutate(Trigger.Date=as.POSIXct(Trigger.Date, format = "%d/%m/%Y", tz = "UTC"),
+                             Trigger.Date=as.Date(Trigger.Date))%>% 
+                     rename(Participant.Public.ID=Prolific.Id,Start.Date=Trigger.Date),
+                     by  = "Participant.Public.ID") %>% 
+  mutate(day_since_enrol = as.Date(day1_block2)-as.Date(Start.Date))
+```
+
+
+### calculate the within-person correlation between PA and NA and use it as a covariate
+```{r}
+pana_coef <- NULL
+for (s in unique(df_PANAS$Prolific.Id)){
+  df_PANAS_temp <- df_PANAS %>% filter(Prolific.Id == s) %>% 
+    mutate(PA_sum_scaled = as.numeric(scale(PA_sum)),
+           NA_sum_scaled = as.numeric(scale(NA_sum)))
+  if (prod(!is.na(df_PANAS_temp$NA_sum_scaled)) != 0 &
+      prod(!is.na(df_PANAS_temp$PA_sum_scaled)) != 0){
+  lm_pana <- lm(scale(PA_sum) ~ scale(NA_sum),df_PANAS_temp)
+  lms <- summary(lm_pana)
+  
+    pana_coef <- rbind(pana_coef,cbind("Prolific.Id" = s,t(lms$coefficients[2,])))
+  } else {
+    #some participants never rated NA above 10... so in this case the slope is really 0
+    pana_coef <- rbind(pana_coef,cbind("Prolific.Id" = s,0,0,0,1))
+  }
+}
+
+
+pana_coef <- data.frame(pana_coef) %>% 
+  dplyr::select(Prolific.Id, Estimate) %>% 
+  mutate(Estimate = as.numeric(Estimate)) %>% 
+  rename(PA_NA_corr = Estimate)
+
+df_master <- left_join(df_master,pana_coef)
+```
+
+#read demographics
+```{r}
+# External raw file, outside this repo (not shared): the Prolific demographics
+# export used to build demo_info.csv. EDIT this path if re-running on another machine.
+demographics_path <- "~/Desktop/MoodInstability/Paper Material for Ryan/AppleTask_scripts_1/Demographics.csv"
+demo_info <- read_csv(demographics_path) %>%
+  filter(status == "APPROVED") %>% 
+  filter(participant_id %in% df_master$Prolific.Id) %>% 
+  group_by(participant_id) %>% 
+  mutate(rowid = row_number()) %>% 
+  filter(rowid == 1) %>% 
+  dplyr::select(-rowid)
+
+df_master %>% 
+  filter(!Prolific.Id%in% demo_info$participant_id)
+```
+
+#output 
+```{r}
+ls.participant <- intersect(df_master$Prolific.Id,df_all$Participant.Public.ID)
+length(ls.participant)
+
+df_master <- df_master %>% 
+  filter(Prolific.Id %in% ls.participant)
+
+write.csv(df_master,paste0(outdir,'df_baseline_panas_gorilla_params.csv'))
+
+df_mood_ratings <- df_mood_ratings %>% 
+  rename(Prolific.Id = Participant.Public.ID) %>% 
+  filter(Prolific.Id %in% ls.participant)
+
+write.csv(df_mood_ratings,paste0(outdir,'moodrate_scaled.csv'))
+
+# ggplot(df_mood_ratings %>% 
+#          filter(Prolific.Id == "5f2a94aba340af2e4dab2910", 
+#                 day_block %in% c("day1_block1","day2_block1")), aes(x = Trial.Index, y = moodrate))+
+#   geom_line(aes(color = day_block),size = 1)+
+#   theme_void()+
+#   scale_color_brewer(palette = "Paired")+
+#   theme(legend.position = "none")+
+#   labs(title = "Task")+
+# ggplot(df_panas_Est_tc %>% 
+#          filter(id == "5f2a94aba340af2e4dab2910",
+#                 panas_type %in% c("pos","neg")), aes(x = trial_id, y = origval))+
+#   geom_line(aes(color = panas_type),size = 1)+
+#   theme_void()+
+#     scale_color_brewer(palette = "Dark2")+
+#   labs(title = "Ecological")+
+#   plot_layout(nrow = 2)
+```
+
+## Bayesian model estimate timecourses
+### revert mu back into original space!
+```{r}
+df_gor_Est_tc <- read.csv(paste0(outdir,'./apple_moodrate_params_timecourse.csv')) %>%
+  filter(run %in% c("d1r1","d2r1")) %>% #only take the first run each day
+  anonymized_id_to_prolific_id() %>%
+  group_by(id,run) %>%
+  mutate(trial_id = row_number())
+
+
+df_gor_Est_tc <- left_join(df_gor_Est_tc,
+          df_mood_ratings %>% 
+  filter(block == 1) %>% 
+  dplyr::select(Prolific.Id,day,block,moodrate,max_moodrate,min_moodrate) %>% 
+  mutate(run = paste0("d",day,"r",block)) %>% 
+  rename(id = Prolific.Id) %>% 
+  dplyr::select(-day,-block) %>% #only take the first run each day
+  group_by(id,run) %>% 
+  mutate(trial_id = row_number()),
+  by = c("id","trial_id","run")) %>% 
+  rowwise() %>% 
+  mutate(mu_orig = mu*10) #y'=y/10 --> y = 10*y'
+
+df_gor_Est_tc <- df_gor_Est_tc%>%
+  mutate(subj_day_block = paste0(id,"_",day_block)) %>% 
+  filter(!subj_day_block %in% subj_exclude_novariance_rl$subj_day_block)
+#the range of mu is from 0.1 to 0.9
+#mu = (rawscore - min)/(max-min) * 0.8 + 0.1
+#rawscore = (mu - 0.1)/0.8 * (max-min) + min
+
+
+df_panas_Est_tc <- read.csv(paste0(outdir,'./ema_panas_params_timecourse.csv')) %>%
+  anonymized_id_to_prolific_id() %>%
+  group_by(id,panas_type) %>%
+  mutate(trial_id = row_number())
+
+df_panas_Est_tc <- left_join(df_panas_Est_tc, 
+          df_PANAS %>% 
+  dplyr::select(Prolific.Id,PA_sum,NA_sum,PAminusNA_sum,max_PAminusNA,min_PAminusNA) %>% 
+  rename(id = Prolific.Id,
+         pos = PA_sum,
+         neg = NA_sum,
+         posminusneg = PAminusNA_sum) %>%
+    mutate(posminusneg_hr = posminusneg) %>% 
+    relocate(posminusneg_hr, .after = posminusneg) %>% 
+  pivot_longer(pos:posminusneg_hr,names_to = "panas_type", values_to = "origval") %>% 
+  group_by(id,panas_type) %>% 
+  mutate(trial_id = row_number()),
+  by = c("id","panas_type","trial_id")) %>% 
+  rowwise() %>% 
+  mutate(mu_orig = mu*100-50) #y'=(y+50)/100 --> y = 100*y'-50
+
+range(df_panas_Est_tc$mu_orig,na.rm = T)
+range(df_PANAS$PAminusNA_sum,na.rm = T)
+```
+
+```{r}
+demo_info <- demo_info %>% 
+  filter(participant_id %in% df_master$Prolific.Id)
+df_days <- df_days %>% 
+  filter(Participant.Public.ID %in% df_master$Prolific.Id)
+
+df_wof <- df_wof %>% 
+  filter(Participant.Public.ID %in% df_master$Prolific.Id)
+
+df_totalmon <- df_totalmon %>% 
+  filter(Participant.Public.ID %in% df_master$Prolific.Id)
+
+df_wof_react <- df_wof_react %>% 
+  filter(Participant.Public.ID %in% df_master$Prolific.Id)
+```
+
+```{r}
+# panas_results / mood_results (Bayesian AR(1) fits) need df_PANAS / df_mood_AR,
+# which only exist once we get to this point in the notebook -- so var1model_utils.R
+# and run_var1model.R are sourced here rather than by the caller.
+#
+# Fitting these 5 brms models (1 PANAS + 4 task blocks, 4 chains x 2000 iter each)
+# is slow. Set `read_ar1_from_memory` (in the calling script, e.g.
+# write_anonymized_data.R) to TRUE to reuse the cached fit from a prior run instead
+# of refitting; FALSE forces a refit and overwrites the cache. Defaults to TRUE
+# (prefer the cache) if the caller didn't set it.
+if (!exists("read_ar1_from_memory")) read_ar1_from_memory <- TRUE
+ar1_cache_path <- "data/var1model_ar1_cache.rds" # relative to repo root (knit_root_dir)
+
+if (read_ar1_from_memory && file.exists(ar1_cache_path)) {
+  ar1_cache <- readRDS(ar1_cache_path)
+  panas_results <- ar1_cache$panas_results
+  mood_results <- ar1_cache$mood_results
+} else {
+  source("osf_data_and_scripts/scripts/02_deidentify_raw_data/var1model_utils.R")
+  source("osf_data_and_scripts/scripts/02_deidentify_raw_data/run_var1model.R")
+  saveRDS(
+    list(panas_results = panas_results, mood_results = mood_results),
+    ar1_cache_path
+  )
+}
+
+# make task parameter estimates NA for subject × day_block with no mood variance
+exclude_pairs <- subj_exclude_novariance_rl %>%
+  transmute(Prolific.Id = Participant.Public.ID,
+            day_block)
+
+mood_results <- mood_results %>%
+  pivot_longer(
+    cols = matches("day[12]_block[12]_(AR1|VAR|LOGVAR|MEAN|LOGSIGMA|SIGMA)"),
+    names_to = c("day_block","param"),
+    names_pattern = "(day[12]_block[12])_(.*)"
+  ) %>%
+  mutate(value = if_else(
+    paste(Prolific.Id, day_block) %in%
+      paste(exclude_pairs$Prolific.Id, exclude_pairs$day_block),
+    NA_real_, value
+  )) %>%
+  pivot_wider(
+    names_from = c("day_block","param"),
+    values_from = "value",
+    names_sep = "_"
+  )
+df_master <- df_master %>%
+  left_join(panas_results, by = "Prolific.Id") %>%
+  left_join(mood_results,  by = "Prolific.Id") %>%
+  mutate(
+    TASK_AR1 = rowMeans(cbind(day1_block1_AR1,  day2_block1_AR1),  na.rm = TRUE),
+    TASK_VAR = rowMeans(cbind(day1_block1_VAR,  day2_block1_VAR),  na.rm = TRUE),
+    TASK_LOGVAR = rowMeans(cbind(day1_block1_LOGVAR, day2_block1_LOGVAR), na.rm = TRUE),
+    TASK_SIGMA = rowMeans(cbind(day1_block1_SIGMA,  day2_block1_SIGMA),  na.rm = TRUE),
+    TASK_LOGSIGMA = rowMeans(cbind(day1_block1_LOGSIGMA, day2_block1_LOGSIGMA), na.rm = TRUE),
+    TASK_MEAN = rowMeans(cbind(day1_block1_MEAN, day2_block1_MEAN), na.rm = TRUE)
+  ) %>%
+  mutate(
+    across(c(TASK_AR1, TASK_VAR, TASK_LOGVAR, TASK_SIGMA, TASK_LOGSIGMA,TASK_MEAN),
+           ~ ifelse(is.nan(.x), NA_real_, .x))
+  )
+```
+
